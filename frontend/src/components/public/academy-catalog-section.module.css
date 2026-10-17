@@ -47,3 +47,16 @@
 @media(max-width:559px) { .categories { column-gap:20px; } .toolbar { gap:10px 16px; } .toolbar label { flex:1; min-width:0; } .toolbar select { min-width:0; width:100%; } .catalog { padding-block:24px 30px; } }
 @media(prefers-reduced-motion:no-preference) { .thumbnail img { transition:transform 180ms ease; } .card { transition:border-color 150ms ease; } .card h3 { transition:color 150ms ease; } }
 @media(prefers-reduced-motion:reduce) { .card:hover img,.card:focus-within img { transform:none; } }
+.cardActions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:auto;padding-top:12px;container-type:inline-size;}
+.cardAction {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0;min-height:44px;padding:10px 8px;border:1px solid;border-radius:4px;font:inherit;font-size:12px;line-height:1.35;font-weight:650;text-decoration:none;white-space:nowrap;cursor:pointer;transition:background-color 200ms ease,border-color 200ms ease,color 200ms ease;}
+.cardAction svg {width:15px;height:15px;flex:none;transition:transform 200ms ease;}
+.viewCourse {background:transparent;color:#a8e8ff;border-color:#30748f;}
+.addCart {background:#16C2FF;color:#061827;border-color:#16C2FF;}
+.cardAction:only-child {grid-column:1/-1;}
+.cardAction:focus-visible {outline:2px solid #16C2FF;outline-offset:3px;}
+.addCart:disabled {background:#274e60;color:#daeaf2;border-color:#53798a;cursor:not-allowed;}
+.cardActions>[role=alert] {grid-column:1/-1;color:#ffb9b9;font-size:12px;line-height:1.5;}
+@media(hover:hover) and (pointer:fine) {.viewCourse:hover {background:#123244;border-color:#69daff;color:#d9f5ff;}.addCart:not(:disabled):hover {background:#52d2ff;border-color:#9ae6ff;}.cardAction:not(:disabled):hover svg {transform:translateX(2px);}}
+@media(max-width:379px) {.cardActions {grid-template-columns:minmax(0,1fr);}}
+@container(max-width:235px) {.cardAction {grid-column:1/-1;}}
+@media(prefers-reduced-motion:reduce) {.cardAction,.cardAction svg {transition:none;}.cardAction:not(:disabled):hover svg {transform:none;}}

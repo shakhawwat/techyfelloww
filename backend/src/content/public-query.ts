@@ -5,10 +5,12 @@ import { courseLevels, deliveryModes, researchStages } from "./content.schemas";
 
 type Filter = { field: keyof ContentRecord; values?: readonly string[]; numeric?: boolean };
 const filters: Record<ContentKind, Record<string, Filter>> = {
+  pages: {pageType:{field:"pageType"}},
+  products: {},
   projects: { category: { field: "category" }, technology: { field: "technologies" } },
   research: { domain: { field: "domain" }, researchStage: { field: "researchStage", values: researchStages } },
   publications: { author: { field: "authors" }, venue: { field: "venue" }, year: { field: "year", numeric: true } },
-  team: { expertise: { field: "expertise" } },
+  team: { classification:{field:"classification",values:["team","board"]},expertise: { field: "expertise" } },
   courses: { level: { field: "level", values: courseLevels }, deliveryMode: { field: "deliveryMode", values: deliveryModes } },
 };
 function integer(value: unknown, defaultValue: number, max: number): number {
@@ -42,7 +44,7 @@ export function parsePublicQuery(kind: ContentKind, raw: Record<string, unknown>
     if (spec.values && !spec.values.includes(input)) throw new BadRequestException();
     const parsed = spec.numeric ? integer(input, 1, 9999) : input;
     // Only server-defined field names and scalar $eq values reach MongoDB.
-    Object.assign(filter, { [spec.field]: { $eq: parsed } });
+    if(kind==='team'&&key==='classification'&&parsed==='team')filter.$or=[{classification:'team'},{classification:{$exists:false}}];else Object.assign(filter, { [spec.field]: { $eq: parsed } });
   }
   return { page, limit, skip, sort, filter };
 }

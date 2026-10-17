@@ -1,4 +1,4 @@
-// Only implemented public routes. Store currently resolves to the honest homepage preview.
+// Only implemented public routes. Store resolves to the robotics ecommerce store at /store.
 export type PublicNavLink = { label: string; href: string };
 export type PublicNavGroup = PublicNavLink & { id: string; children: readonly PublicNavLink[]; activeRoots: readonly string[] };
 export const publicNavGroups: readonly PublicNavGroup[] = [
@@ -11,4 +11,5 @@ export const publicNavGroups: readonly PublicNavGroup[] = [
   { id: 'company', label: 'Company', href: '/about', activeRoots: ['/about', '/team', '/projects', '/contact'], children: [{ label: 'About', href: '/about' }, { label: 'Team', href: '/team' }, { label: 'Projects', href: '/projects' }, { label: 'Contact', href: '/contact' }] },
 ];
 export function navPathMatches(pathname: string, href: string): boolean { return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(href + '/'); }
-export const publicNavStore: PublicNavLink = { label: 'Store', href: '/#store' };
+export const publicNavStore: PublicNavLink = { label: 'Store', href: '/store' };
+

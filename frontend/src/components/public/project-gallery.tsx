@@ -16,7 +16,7 @@ export const demoGallery:Record<string,Photo[]>={
 };
 export const demoResources={embed:'https://www.youtube.com/embed/dxkKcqtmhus?autoplay=1&playsinline=1',youtube:'https://www.youtube.com/watch?v=dxkKcqtmhus',github:'https://github.com/shakhawwat/agile_final_delevery',store:'https://dadarbari.store'};
 
-export function ProjectGallery({photos,video,fallback,expanded,onExpandedChange}:{photos:Photo[];video:boolean;fallback?:ReactNode;expanded:boolean;onExpandedChange:(value:boolean)=>void}){
+export function ProjectGallery({photos,video,videoUrl,fallback,expanded,onExpandedChange}:{photos:Photo[];video:boolean;videoUrl?:string;fallback?:ReactNode;expanded:boolean;onExpandedChange:(value:boolean)=>void}){
  const [selected,setSelected]=useState(0);
  const photoButton=useRef<HTMLButtonElement>(null),backButton=useRef<HTMLButtonElement>(null),thumbnails=useRef<HTMLDivElement>(null);
  const wasExpanded=useRef(false);
@@ -41,7 +41,7 @@ export function ProjectGallery({photos,video,fallback,expanded,onExpandedChange}
   <h3>{expanded?'Larger image view':'Media gallery'}</h3>
   {expanded&&<button ref={backButton} type="button" className={styles.galleryAction} onClick={()=>onExpandedChange(false)}><ArrowLeft aria-hidden="true"/>Back to gallery</button>}
   <div className={styles.mainMedia} data-enlarged={expanded}>
-   {showVideo?<iframe key={demoResources.embed} src={demoResources.embed} title="Shared demo video resource — not documentation of a completed project" allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:photo?<button ref={photoButton} type="button" aria-label={expanded?'Return to gallery':'Enlarge selected photo'} onClick={()=>onExpandedChange(!expanded)}><Image src={photo.url} alt={photo.altText} fill sizes={expanded?'100vw':'(max-width:767px) 100vw, 780px'}/>{!expanded&&<span className={styles.enlargeHint}><Maximize2 aria-hidden="true"/>Enlarge image</span>}</button>:fallback}
+   {showVideo?<iframe key={videoUrl??demoResources.embed} src={videoUrl??demoResources.embed} title={videoUrl?"Published project video":"Shared demo video resource — not documentation of a completed project"} sandbox="allow-scripts allow-same-origin allow-presentation" allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:photo?<button ref={photoButton} type="button" aria-label={expanded?'Return to gallery':'Enlarge selected photo'} onClick={()=>onExpandedChange(!expanded)}><Image src={photo.url} alt={photo.altText} fill sizes={expanded?'100vw':'(max-width:767px) 100vw, 780px'}/>{!expanded&&<span className={styles.enlargeHint}><Maximize2 aria-hidden="true"/>Enlarge image</span>}</button>:fallback}
   </div>
   <p className={styles.mediaCaption}>{showVideo?'Shared demo video resource. It is not documentation of this concept or any completed Techy Fellow project.':photo?.altText}</p>
   {!expanded&&<>

@@ -21,7 +21,7 @@ export function CourseList({ records }: { records: readonly PublicRecord[] }) {
     return { id: entry.slug, title: entry.title, description: entry.summary,
       media: image ? { src: image.url, alt: image.altText } : undefined,
       fallback: <GraduationCap aria-hidden="true"/>,
-      metadata: <><CourseLevel level={entry.level}/>{entry.deliveryMode && <p>{entry.deliveryMode.replaceAll('-', ' ')}</p>}{entry.duration && <p>Duration: {entry.duration.value} {entry.duration.unit}</p>}<AcademyPrice courseId={entry.slug}/><AcademyAddToCart courseId={entry.slug}/></>,
+      metadata: <><CourseLevel level={entry.level}/>{entry.deliveryMode && <p>{entry.deliveryMode.replaceAll('-', ' ')}</p>}{entry.duration && <p>Duration: {entry.duration.value} {entry.duration.unit}</p>}<AcademyPrice courseId={entry.slug} published illustrative={entry.illustrative}/><AcademyAddToCart courseId={entry.slug}/></>,
       details: <div className={styles.scope}>
         {!!record.prerequisites.length && <section><h4>Prerequisites</h4><ul>{record.prerequisites.map(item => <li key={item}>{item}</li>)}</ul></section>}
         {!!record.syllabus.length && <section><h4>Syllabus</h4>{record.syllabus.map((module, index) => <div key={`${module.title}-${index}`}><h4>{module.title}</h4><ul>{module.topics.map(topic => <li key={topic}>{topic}</li>)}</ul></div>)}</section>}

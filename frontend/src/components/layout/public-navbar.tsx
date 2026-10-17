@@ -12,7 +12,7 @@ import { NavbarLogo } from './navbar-logo';
 export function PublicNavbar() {
   const pathname = usePathname(), header = useRef<HTMLElement>(null), dialog = useRef<HTMLDialogElement>(null), mobileTrigger = useRef<HTMLButtonElement>(null), wordmark = useRef<HTMLAnchorElement>(null);
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [desktopGroup, setDesktopGroup] = useState<string | null>(null), [mobileGroup, setMobileGroup] = useState<string | null>(null), [mobileOpen, setMobileOpen] = useState(false), [scrolled, setScrolled] = useState(false), [hash, setHash] = useState('');
+  const [desktopGroup, setDesktopGroup] = useState<string | null>(null), [mobileGroup, setMobileGroup] = useState<string | null>(null), [mobileOpen, setMobileOpen] = useState(false), [scrolled, setScrolled] = useState(false);
   const previousPath = useRef(pathname);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null), closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelTimers = useCallback(() => {
@@ -36,12 +36,12 @@ export function PublicNavbar() {
     }, 200);
   }
   useEffect(() => {
-    const scroll = () => setScrolled(window.scrollY > 12), readHash = () => setHash(window.location.hash);
-    scroll(); readHash(); window.addEventListener('scroll', scroll, { passive: true }); window.addEventListener('hashchange', readHash); window.addEventListener('popstate', readHash);
-    return () => { window.removeEventListener('scroll', scroll); window.removeEventListener('hashchange', readHash); window.removeEventListener('popstate', readHash); };
+    const scroll = () => setScrolled(window.scrollY > 12);
+    scroll(); window.addEventListener('scroll', scroll, { passive: true });
+    return () => { window.removeEventListener('scroll', scroll); };
   }, []);
   useEffect(() => {
-    if (previousPath.current !== pathname) { previousPath.current = pathname; cancelTimers(); setDesktopGroup(null); dialog.current?.close(); setHash(window.location.hash); }
+    if (previousPath.current !== pathname) { previousPath.current = pathname; cancelTimers(); setDesktopGroup(null); dialog.current?.close(); }
   }, [pathname, cancelTimers]);
   useEffect(() => {
     const outside = (event: globalThis.PointerEvent) => { if (!header.current?.contains(event.target as Node)) { cancelTimers(); setDesktopGroup(null); } };
@@ -58,10 +58,11 @@ export function PublicNavbar() {
     desktop.addEventListener('change', resize);
     return () => { document.body.style.overflow = overflow; document.body.style.paddingRight = padding; desktop.removeEventListener('change', resize); };
   }, [mobileOpen]);
-  const storeActive = pathname === '/' && hash === '#store';
+  const storeActive = pathname === '/store' || pathname.startsWith('/store/');
+
   const groupActive = (group: PublicNavGroup) => group.activeRoots.some(root => navPathMatches(pathname, root));
   function closeAll() { cancelTimers(); setDesktopGroup(null); dialog.current?.close(); }
-  function homeClick() { closeAll(); setHash(''); }
+  function homeClick() { closeAll(); }
   function restoreFocus() { setMobileOpen(false); (window.matchMedia('(min-width: 1440px)').matches ? wordmark.current : mobileTrigger.current)?.focus(); }
   function openMobile() { cancelTimers(); setDesktopGroup(null); setMobileGroup(publicNavGroups.find(groupActive)?.id ?? null); dialog.current?.showModal(); setMobileOpen(true); }
   function disclosureKey(event: KeyboardEvent<HTMLButtonElement>, group: PublicNavGroup) {
@@ -101,8 +102,9 @@ export function PublicNavbar() {
       <nav className={styles.desktop} aria-label="Main navigation" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { cancelTimers(); setDesktopGroup(null); } }}>
         <Link className={styles.navItem} href="/" aria-current={pathname === '/' && !storeActive ? 'page' : undefined} onClick={homeClick}>Home</Link>
         {publicNavGroups.filter(group => group.id !== 'company').map(desktopDisclosure)}
-        <Link className={styles.navItem} href={publicNavStore.href} aria-label="Store preview" aria-current={storeActive ? 'location' : undefined} onClick={() => { closeAll(); setHash('#store'); }}>Store</Link>
+        <Link className={styles.navItem} href={publicNavStore.href} aria-current={storeActive ? 'page' : undefined} onClick={closeAll}>Store</Link>
         {desktopDisclosure(publicNavGroups.find(group => group.id === 'company')!)}
+        <Link className={styles.navItem} href="/blog" aria-current={pathname.startsWith('/blog')?'page':undefined} onClick={closeAll}>Community</Link>
         <NavbarAccount onNavigate={closeAll}/>
       </nav>
       <button ref={mobileTrigger} className={styles.mobileTrigger} type="button" aria-label="Open navigation menu" aria-expanded={mobileOpen} aria-controls="public-mobile-navigation" aria-haspopup="dialog" onClick={openMobile}><Menu aria-hidden="true"/></button>
@@ -110,8 +112,9 @@ export function PublicNavbar() {
         <div className={styles.mobileHeading}><h2 id="public-mobile-title">Navigation</h2><button type="button" autoFocus className={styles.closeButton} aria-label="Close navigation menu" onClick={closeAll}><X aria-hidden="true"/></button></div>
         <nav aria-label="Mobile navigation"><Link className={styles.mobileItem} href="/" aria-current={pathname === '/' && !storeActive ? 'page' : undefined} onClick={homeClick}>Home</Link>
           {publicNavGroups.filter(group => group.id !== 'company').map(group => group.id === 'academy' ? <Link key={group.id} className={styles.mobileItem} href="/academy" onClick={closeAll}>Academy</Link> : <div key={group.id} className={styles.mobileGroup}><button className={styles.mobileItem} type="button" data-active={groupActive(group) || undefined} aria-expanded={mobileGroup === group.id} aria-controls={`public-mobile-${group.id}`} onClick={() => setMobileGroup(current => current === group.id ? null : group.id)}>{group.label}<ChevronDown aria-hidden="true"/></button><div className={styles.mobileChildren} id={`public-mobile-${group.id}`} hidden={mobileGroup !== group.id}>{groupLinks(group)}</div></div>)}
-          <Link className={styles.mobileItem} href={publicNavStore.href} aria-label="Store preview" aria-current={storeActive ? 'location' : undefined} onClick={() => { closeAll(); setHash('#store'); }}>Store</Link>
+          <Link className={styles.mobileItem} href={publicNavStore.href} aria-current={storeActive ? 'page' : undefined} onClick={closeAll}>Store</Link>
           {publicNavGroups.filter(group => group.id === 'company').map(group => <div key={group.id} className={styles.mobileGroup}><button className={styles.mobileItem} type="button" data-active={groupActive(group) || undefined} aria-expanded={mobileGroup === group.id} aria-controls={`public-mobile-${group.id}`} onClick={() => setMobileGroup(current => current === group.id ? null : group.id)}>{group.label}<ChevronDown aria-hidden="true"/></button><div className={styles.mobileChildren} id={`public-mobile-${group.id}`} hidden={mobileGroup !== group.id}>{groupLinks(group)}</div></div>)}
+          <Link className={styles.mobileItem} href="/blog" onClick={closeAll}>Community</Link>
           <NavbarAccount mobile onNavigate={closeAll}/>
         </nav>
       </dialog>

@@ -1,16 +1,23 @@
 "use client";
+import {useState} from "react";
+import {MediaLibrary} from "./media-library";
+import {AdminVideoInput} from "./video-input";
+import type {Resource} from "@/lib/admin/contracts";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TextAreaField, TextField, SelectField } from "@/components/ui/form-field";
 import { emptyRow, type Field, type Value, type Values } from "@/lib/admin/fields";
-export function ContentField({ field, value, path, onChange, errors, disabled }: { field: Field; value: Value; path: string; onChange: (value: Value) => void; errors: Record<string, string>; disabled: boolean }) {
+export function ContentField({ field, value, path, onChange, errors, disabled, resource }: { field: Field; value: Value; path: string; onChange: (value: Value) => void; errors: Record<string, string>; disabled: boolean;resource?:Resource }) {
+  const [picking,setPicking]=useState(false);
   const id = `content-${path.replaceAll(".", "-")}`;
+  if(field.type==='asset')return <div><TextField id={id} label={field.label} value={String(value)} error={errors[path]} disabled={disabled} onChange={event=>onChange(event.target.value)} hint="Existing /banner path or media identifier. Uploaded banners use media:ID."/>{resource&&!disabled&&<Button variant="secondary" onClick={()=>setPicking(!picking)}>Choose uploaded image</Button>}{picking&&resource&&<MediaLibrary resource={resource} imagesOnly onSelect={media=>{onChange(`media:${media.id}`);setPicking(false);}}/>}</div>;
+  if(field.type==='video')return <AdminVideoInput value={String(value)} disabled={disabled} onChange={onChange}/>;
   if (field.type === "object" || field.type === "repeater") {
     const rows: Values[] = field.type === "object" ? [value as Values] : value as Values[];
     return <fieldset className="admin-fieldset" disabled={disabled}><legend>{field.label}</legend>{field.hint && <p className="field-hint">{field.hint}</p>}{errors[path] && <p className="field-error" role="alert">{errors[path]}</p>}
       {rows.map((row, index) => <div key={index} className={field.type === "repeater" ? "admin-repeat-row" : "admin-nested-grid"}>
-        {field.type === "repeater" && <div className="admin-repeat-heading"><span>{field.label} {index + 1}</span><Button variant="ghost" aria-label={`Remove ${field.label.toLowerCase()} ${index + 1}`} onClick={() => onChange(rows.filter((_, i) => i !== index))}><Trash2 aria-hidden="true" />Remove</Button></div>}
-        {(field.fields ?? []).map(child => <ContentField key={child.key} field={child} value={row[child.key]} path={`${path}${field.type === "repeater" ? `.${index}` : ""}.${child.key}`} errors={errors} disabled={disabled}
+        {field.type === "repeater" && <div className="admin-repeat-heading"><span>{field.label} {index + 1}</span><Button variant="ghost" aria-label={`Remove ${field.label.toLowerCase()} ${index + 1}`} onClick={() => onChange(rows.filter((_, i) => i !== index))}><Trash2 aria-hidden="true" />Remove</Button><Button variant="ghost" disabled={disabled||index===0} onClick={()=>{const next=[...rows];[next[index-1],next[index]]=[next[index],next[index-1]];onChange(next);}}>Move up</Button><Button variant="ghost" disabled={disabled||index===rows.length-1} onClick={()=>{const next=[...rows];[next[index+1],next[index]]=[next[index],next[index+1]];onChange(next);}}>Move down</Button></div>}
+        {(field.fields ?? []).map(child => <ContentField resource={resource} key={child.key} field={child} value={row[child.key]} path={`${path}${field.type === "repeater" ? `.${index}` : ""}.${child.key}`} errors={errors} disabled={disabled}
           onChange={next => { const updated = { ...row, [child.key]: next }; onChange(field.type === "object" ? updated : rows.map((item, i) => i === index ? updated : item)); }} />)}
       </div>)}
       {field.type === "repeater" && !disabled && <Button variant="secondary" disabled={rows.length >= 100} onClick={() => onChange([...rows, emptyRow(field)])}><Plus aria-hidden="true" />Add {field.label.toLowerCase()}</Button>}

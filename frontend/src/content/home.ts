@@ -26,5 +26,6 @@ export const homeCopy = {
 export const publicNavigation = [
   { label: 'Solutions', href: '/solutions' }, { label: 'Research', href: '/research' },
   { label: 'Academy', href: '/academy' }, { label: 'Consulting', href: '/consulting' },
-  { label: 'Store', href: '/#store' }, { label: 'Company', href: '/about' }, { label: 'Build With Us', href: '/build-with-us' },
+  { label: 'Store', href: '/store' }, { label: 'Company', href: '/about' }, { label: 'Build With Us', href: '/build-with-us' },
 ];
+

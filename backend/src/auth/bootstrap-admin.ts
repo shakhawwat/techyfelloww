@@ -16,9 +16,10 @@ async function main(): Promise<void> {
     await connection.asPromise();
     const users = connection.model(authDefinitions.user.name, authDefinitions.user.schema, authDefinitions.user.collection);
     await users.createIndexes();
-    if (await users.exists({ email: { $eq: email } })) throw new Error("Existing user");
+    const existing=await users.findOne({email:{$eq:email}}).select('role').lean();
+    if(existing){console.error(existing.role==='MEMBER'?'Bootstrap conflict: this email already belongs to a MEMBER. No account was changed.':'Bootstrap conflict: this email already exists. No account was changed.');process.exitCode=1;return;}
     // Unique index also protects concurrent bootstrap commands. No upsert/update/elevation.
-    await users.create({ email, passwordHash: await hashPassword(password), role: "SUPER_ADMIN", enabled: true });
+    await users.create({ email, passwordHash: await hashPassword(password), role: "SUPER_ADMIN", enabled: true,mustChangePassword:true });
     console.log("Bootstrap administrator created.");
   } catch {
     console.error("Bootstrap refused or failed; verify environment, database access and that the normalized user does not already exist.");

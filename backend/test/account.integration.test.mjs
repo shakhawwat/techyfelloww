@@ -14,7 +14,7 @@ const {AccountService}=require('../dist/account/account.service.js');
 const {VerificationProcessor}=require('../dist/account/verification-processor.js');
 const {verificationConfiguration,decryptVerificationToken}=require('../dist/account/verification-config.js');
 const uri='mongodb://mongodb:27017/techyfellow_test_account_step1?replicaSet=rs0',base='http://127.0.0.1:4000/api/v1',origin='http://localhost:8080';
-const password=randomBytes(24).toString('base64url'),secrets=[password],digest=value=>createHash('sha256').update(value).digest('hex');
+const password='a1'+randomBytes(24).toString('base64url'),secrets=[password],digest=value=>createHash('sha256').update(value).digest('hex');
 const body=email=>({name:'Synthetic Member',email,password,passwordConfirmation:password});
 async function request(path,status,{method='GET',cookie,body:input,headers={}}={}){
  const response=await fetch(base+path,{method,headers:{...(input!==undefined?{'Content-Type':'application/json',Origin:origin,'X-CSRF-Protection':'1'}:{}),...(cookie?{Cookie:cookie}:{}),...headers},...(input!==undefined?{body:JSON.stringify(input)}:{})});const data=await response.json();assert.equal(response.status,status,`${method} ${path}`);

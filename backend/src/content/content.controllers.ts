@@ -62,3 +62,8 @@ export class CoursesController {
   @Get(":slug")
   detail(@Param("slug") slug: string, @Query() query: Record<string, unknown>) { return this.content.detail("courses", slug, query); }
 }
+
+@Controller('pages') @UseFilters(ContentExceptionFilter)
+export class PagesController {constructor(private readonly content:ContentService){} @PublicEndpoint() @Get() list(@Query() query:Record<string,unknown>){return this.content.list('pages',query);} @PublicEndpoint() @Get(':slug') detail(@Param('slug') slug:string,@Query() query:Record<string,unknown>){return this.content.detail('pages',slug,query);}}
+@Controller('products') @UseFilters(ContentExceptionFilter)
+export class ProductsController {constructor(private readonly content:ContentService){} @PublicEndpoint() @Get() list(@Query() query:Record<string,unknown>){return this.content.list('products',query);} @PublicEndpoint() @Get(':slug') detail(@Param('slug') slug:string,@Query() query:Record<string,unknown>){return this.content.detail('products',slug,query);}}

@@ -26,4 +26,4 @@ function controller(kind: ContentKind): Type {
   }
   return AdminContentController;
 }
-export const adminContentControllers = (["projects", "research", "publications", "team", "courses"] as const).map(controller);
+export const adminContentControllers = (["projects", "research", "publications", "team", "courses", "pages", "products"] as const).map(controller);

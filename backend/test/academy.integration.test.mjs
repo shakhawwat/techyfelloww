@@ -9,7 +9,7 @@ const require=createRequire(import.meta.url);
 test('isolated Academy access, enrollment, scholarships and concurrency',{timeout:180000},async()=>{
  assert.equal(process.env.NODE_ENV,'test','Only run with NODE_ENV=test');
  const dbName=`techyfellow_test_academy_${randomBytes(6).toString('hex')}`;
- const uri=`mongodb://mongodb:27017/${dbName}?replicaSet=rs0`;
+ const uri=`${process.env.TECHYFELLOW_TEST_MONGO??'mongodb://mongodb:27017'}/${dbName}?replicaSet=rs0`;
  process.env.MONGODB_URI=uri;process.env.AUTH_ALLOWED_ORIGINS='http://localhost:8081';process.env.EMAIL_ENABLED='false';
  const root=await mkdtemp(join(tmpdir(),'academy-private-test-'));process.env.ACADEMY_MEDIA_ROOT=root;
  await writeFile(join(root,'public.webm'),'Synthetic public media access fixture');await writeFile(join(root,'resource.txt'),'Synthetic protected resource');await writeFile(join(root,'private.mp4'),'Synthetic media access fixture');

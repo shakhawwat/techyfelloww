@@ -1,3 +1,4 @@
+import {ADMIN_IDLE_MS,adminIdleExpired} from './admin-idle';
 import { BadRequestException, HttpException, Injectable, ServiceUnavailableException, UnauthorizedException, type OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectModel } from "@nestjs/mongoose";
@@ -5,8 +6,8 @@ import { randomBytes } from "node:crypto";
 import { Model, Types } from "mongoose";
 import { normalizeEmail, validEmail, type UserRecord, type SessionRecord, type ThrottleRecord, type AuditRecord } from "./auth.schemas";
 import { hashPassword, verifyPassword } from "./password";
-import { hashToken, type AuthIdentity } from "./auth-http";
-import { roles } from "./permissions";
+import { hashToken, type AuthIdentity, type AuthRequest } from "./auth-http";
+import { StaffRolesService } from "./staff-roles.service";
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -16,7 +17,7 @@ export class AuthService implements OnModuleInit {
     @InjectModel("AuthSession") private readonly sessions: Model<SessionRecord>,
     @InjectModel("LoginThrottle") private readonly throttles: Model<ThrottleRecord>,
     @InjectModel("AuthAudit") private readonly audits: Model<AuditRecord>,
-    private readonly config: ConfigService,
+    private readonly config: ConfigService,private readonly staffRoles:StaffRolesService,
   ) {}
   async onModuleInit(): Promise<void> { this.dummyHash = await hashPassword(randomBytes(32).toString("hex")); }
   async audit(event: AuditRecord["event"], outcome: AuditRecord["outcome"], userId?: string): Promise<void> {
@@ -65,7 +66,8 @@ export class AuthService implements OnModuleInit {
       user = await this.users.findOne({ email: { $eq: email } }).select("+passwordHash").maxTimeMS(1500).lean();
       verified = await verifyPassword(user?.passwordHash ?? this.dummyHash, input.password);
     } catch { throw new ServiceUnavailableException(); }
-    if (!user || !verified || !user.enabled || !roles.includes(user.role) || (publicAccount ? user.role !== "MEMBER" : user.role === "MEMBER")) {
+    let rolePolicy;try{rolePolicy=await this.staffRoles.resolve(user?.role);}catch{throw new ServiceUnavailableException();}
+    if (!user || !verified || !user.enabled || !rolePolicy.known || (publicAccount ? user.role !== "MEMBER" : user.role === "MEMBER")) {
       await this.audit("login", "invalid_credentials");
       throw new UnauthorizedException();
     }
@@ -75,7 +77,8 @@ export class AuthService implements OnModuleInit {
     try {
       // Never reuse a client-supplied token. Revoke the previous browser session on successful login.
       if (previousToken) await this.sessions.updateOne({ tokenHash: hashToken(previousToken), revokedAt: null }, { $set: { revokedAt: new Date() } }).maxTimeMS(1500);
-      const session = await this.sessions.create({ userId: user._id, tokenHash: hashToken(token), expiresAt });
+      // Bind the session to the access and role revisions checked above, including concurrent edits.
+      const session = await this.sessions.create({ userId: user._id, tokenHash: hashToken(token), expiresAt,accessVersion:user.accessVersion??0,customRoleRevision:rolePolicy.revision, ...(user.role!=="MEMBER"?{adminActivityAt:new Date()}: {}) });
       sessionId = session._id;
       await this.audit("login", "success", String(user._id));
     } catch {
@@ -84,19 +87,33 @@ export class AuthService implements OnModuleInit {
     }
     return { token, expiresAt, user: { id: String(user._id), email: user.email, role: user.role } satisfies AuthIdentity };
   }
-  async authenticate(token: string | undefined) {
+  async authenticate(token: string | undefined):Promise<NonNullable<AuthRequest['auth']>> {
     if (!token) throw new UnauthorizedException();
     try {
       const session = await this.sessions.findOne({ tokenHash: hashToken(token), revokedAt: null, expiresAt: { $gt: new Date() } }).maxTimeMS(1500).lean();
       if (!session) throw new UnauthorizedException();
       // Reload enabled/role on EVERY request; no stale permission or account-status cache.
       const user = await this.users.findOne({ _id: session.userId, enabled: true }).maxTimeMS(1500).lean();
-      if (!user || !roles.includes(user.role)) throw new UnauthorizedException();
-      return { sessionId: String(session._id), user: { id: String(user._id), email: user.email, role: user.role } satisfies AuthIdentity };
+      const rolePolicy=await this.staffRoles.resolve(user?.role);
+      if (!user || !rolePolicy.known||session.accessVersion!==undefined&&session.accessVersion!==(user.accessVersion??0)||user.role.startsWith("CUSTOM_")&&session.customRoleRevision!==rolePolicy.revision) throw new UnauthorizedException();
+      const lastActivity=session.adminActivityAt??session.createdAt;
+      if(user.role!=="MEMBER"&&adminIdleExpired(lastActivity)){
+        const revoked=await this.sessions.updateOne({_id:session._id,revokedAt:null,adminActivityAt:session.adminActivityAt??{$exists:false}},{$set:{revokedAt:new Date()}}).maxTimeMS(1500);
+        if(!revoked.modifiedCount)return this.authenticate(token);
+        throw new UnauthorizedException();
+      }
+      return { sessionId: String(session._id),passwordChangeRequired:user.role!=="MEMBER"&&!!user.mustChangePassword, ...(user.role!=="MEMBER"?{adminSession:{lastActivityAt:lastActivity.toISOString(),createdAt:session.createdAt.toISOString(),idleExpiresAt:new Date(+lastActivity+ADMIN_IDLE_MS).toISOString()}}:{}), user: { id: String(user._id), email: user.email, role: user.role,...(user.role.startsWith("CUSTOM_")?{permissions:rolePolicy.permissions,roleName:rolePolicy.name}:{}) } satisfies AuthIdentity };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException();
     }
+  }
+  async adminActivity(sessionId:string,user:AuthIdentity){
+    if(user.role==='MEMBER')throw new UnauthorizedException();
+    const now=new Date(),cutoff=new Date(+now-ADMIN_IDLE_MS);
+    try{const result=await this.sessions.findOneAndUpdate({_id:sessionId,revokedAt:null,expiresAt:{$gt:now},$or:[{adminActivityAt:{$gt:cutoff}},{adminActivityAt:{$exists:false},createdAt:{$gt:cutoff}}]},{$set:{adminActivityAt:now}},{returnDocument:'after'}).maxTimeMS(1500).lean();
+      if(!result)throw new UnauthorizedException();return {lastActivityAt:now.toISOString(),createdAt:result.createdAt.toISOString(),idleExpiresAt:new Date(+now+ADMIN_IDLE_MS).toISOString()};
+    }catch(error){if(error instanceof HttpException)throw error;throw new ServiceUnavailableException();}
   }
   async logout(sessionId: string, userId: string): Promise<void> {
     try { await this.sessions.updateOne({ _id: sessionId }, { $set: { revokedAt: new Date() } }).maxTimeMS(1500); }

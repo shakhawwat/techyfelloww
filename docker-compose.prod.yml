@@ -10,6 +10,10 @@ services:
     build:
       target: production
     environment:
+      MALWARE_SCANNER_HOST: ${MALWARE_SCANNER_HOST:-}
+      MALWARE_SCANNER_PORT: ${MALWARE_SCANNER_PORT:-3310}
+      COMMUNITY_FLAG_TERMS: '${COMMUNITY_FLAG_TERMS:-[]}'
+      COMMUNITY_MAX_LINKS: ${COMMUNITY_MAX_LINKS:-8}
       NODE_ENV: production
       MONGODB_URI: ${MONGODB_URI:?Supply an external MONGODB_URI for production}
       AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:?Supply exact HTTPS frontend origins for production}

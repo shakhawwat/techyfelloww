@@ -1,6 +1,6 @@
 export type KitImage={url:string;alt:string;width:number;height:number};
-export type KitData={images:KitImage[];skill:string;components:{component:string;quantity:number;unitPrice:number}[];compatibility:string[];extras:string[];power:string[];assembly:string[];outcomes:string[];relatedCourse:string};
-export type KitPreview={id:string;kind:'kit';title:string;summary:string;image:KitImage;kit:KitData;details:[]};
+export type KitData={documents?:{url:string;label:string}[];images:KitImage[];skill:string;components:{component:string;quantity:number;unitPrice:number}[];compatibility:string[];extras:string[];power:string[];assembly:string[];outcomes:string[];relatedCourse:string};
+export type KitPreview={demo?:boolean;priceMinor?:number;id:string;kind:'kit';title:string;summary:string;image:KitImage;kit:KitData;details:[]};
 export const demoKits:KitPreview[]=[
  {
   "id": "robotics-kit",

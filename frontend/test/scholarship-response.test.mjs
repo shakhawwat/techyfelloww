@@ -1,0 +1,12 @@
+import test,{after} from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+const require=createRequire(import.meta.url),ts=require('typescript'),root=await mkdtemp(join(tmpdir(),'techyfellow-code-response-'));
+await writeFile(join(root,'scholarships.cjs'),ts.transpileModule(await readFile(new URL('../src/lib/admin/scholarships.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText);
+const {isGeneratedScholarshipCode}=require(join(root,'scholarships.cjs'));
+test('generation responses accept new mixed suffixes and existing legacy generated codes',()=>{for(const code of ['TECHYFELLOWA7K2','TECHYFELLOW1ABC','TECHYFELLOW123A','TF-'+ 'AB12'.repeat(12)])assert(isGeneratedScholarshipCode(code));});
+test('malformed responses cannot be presented as a saved scholarship code',()=>{for(const code of [null,undefined,{},123,'TECHYFELLOWAAAA','TECHYFELLOW1234','TECHYFELLOWa7k2','TECHYFELLOWA7K','TECHYFELLOWA7K22','TF-ABC123','OTHER-A7K2',' TECHYFELLOWA7K2'])assert.equal(isGeneratedScholarshipCode(code),false);});
+after(()=>rm(root,{recursive:true,force:true}));

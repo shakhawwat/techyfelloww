@@ -1,14 +1,15 @@
+import {CommunitySafety} from './community-safety.service';
 import { BadRequestException, ForbiddenException, Injectable, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
-import { ACCESS_POLICY, VALIDATED_QUERY, MULTIPART_MUTATION, hasPermission, type AccessPolicy } from "./permissions";
+import { ACCESS_POLICY, VALIDATED_QUERY, MULTIPART_MUTATION, hasIdentityPermission, type AccessPolicy } from "./permissions";
 import { readSessionToken, type AuthRequest } from "./auth-http";
 import { AuthService } from "./auth.service";
 
 @Injectable()
 export class AccessGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector, private readonly config: ConfigService, private readonly auth: AuthService) {}
+  constructor(private readonly safety:CommunitySafety,private readonly reflector: Reflector, private readonly config: ConfigService, private readonly auth: AuthService) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const policy = this.reflector.getAllAndOverride<AccessPolicy>(ACCESS_POLICY, [context.getHandler(), context.getClass()]);
     const request = context.switchToHttp().getRequest<AuthRequest>();
@@ -32,10 +33,12 @@ export class AccessGuard implements CanActivate {
     }
     if (policy?.mode === "public") return true;
     request.auth = await this.auth.authenticate(readSessionToken(request, this.config.get("NODE_ENV") === "production"));
+    if(request.auth.passwordChangeRequired&&!['/api/v1/auth/me','/api/v1/auth/logout','/api/v1/auth/activity','/api/v1/auth/change-password','/api/v1/account/me','/api/v1/account/logout'].includes(request.path))throw new ForbiddenException();
     // Missing metadata never grants access, including SUPER_ADMIN.
     if (!policy || !["authenticated", "permissions", "anyPermissions"].includes(policy.mode) || (policy.mode === "permissions" && (!policy.permissions?.length ||
-      !policy.permissions.every(permission => hasPermission(request.auth!.user.role, permission)))) ||
-      (policy.mode === "anyPermissions" && !policy.permissions?.some(permission => hasPermission(request.auth!.user.role, permission)))) throw new ForbiddenException();
+      !policy.permissions.every(permission => hasIdentityPermission(request.auth!.user, permission)))) ||
+      (policy.mode === "anyPermissions" && !policy.permissions?.some(permission => hasIdentityPermission(request.auth!.user, permission)))) throw new ForbiddenException();
+    if(mutation&&!request.path.endsWith('/report')&&request.auth.user.role==='MEMBER'&&/^\/api\/v1\/account\/(blog|profile)(?:\/|$)/.test(request.path))await this.safety.check(request.auth.user.id);
     const allowsQuery = this.reflector.getAllAndOverride<boolean>(VALIDATED_QUERY, [context.getHandler(), context.getClass()]) === true;
     if (!allowsQuery && Object.keys(request.query).length) throw new BadRequestException();
     return true;

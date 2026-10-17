@@ -5,7 +5,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 const require=createRequire(import.meta.url);
 test('Academy management reuses CRUD, roles, images, hashed codes and atomic course-specific enrollment',{timeout:180000},async()=>{
  assert.equal(process.env.NODE_ENV,'test');const name=`techyfellow_test_management_${randomBytes(6).toString('hex')}`;
- process.env.MONGODB_URI=`mongodb://mongodb:27017/${name}?replicaSet=rs0`;process.env.AUTH_ALLOWED_ORIGINS='http://localhost:8081';process.env.EMAIL_ENABLED='false';
+ process.env.MONGODB_URI=`${process.env.TECHYFELLOW_TEST_MONGO??'mongodb://mongodb:27017'}/${name}?replicaSet=rs0`;process.env.AUTH_ALLOWED_ORIGINS='http://localhost:8081';process.env.EMAIL_ENABLED='false';
  const {NestFactory}=require('@nestjs/core'),{getConnectionToken}=require('@nestjs/mongoose'),{AppModule}=require('../dist/app.module.js'),{AuthExceptionFilter}=require('../dist/auth/auth-exception.filter.js');
  const app=await NestFactory.create(AppModule,{logger:false});app.setGlobalPrefix('api/v1');app.useGlobalFilters(new AuthExceptionFilter());const db=app.get(getConnectionToken());await db.asPromise();assert.equal(db.name,name);assert.equal((await db.db.listCollections().toArray()).length,0);
  try{
@@ -15,6 +15,11 @@ test('Academy management reuses CRUD, roles, images, hashed codes and atomic cou
  async function req(path,status,{cookie,body,method=body===undefined?'GET':'POST',headers={}}={}){const r=await fetch(base+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(body===undefined?{}:{'Content-Type':'application/json',Origin:'http://localhost:8081','X-CSRF-Protection':'1'}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});const raw=await r.text();assert.equal(r.status,status,`${method} ${path}: ${raw}`);assert.ok(!raw.includes(password));return {data:JSON.parse(raw).data,error:JSON.parse(raw).error,cookie:r.headers.get('set-cookie')?.split(';')[0]};}
  for(const [role,identity]of Object.entries(identities))identity.cookie=(await req(role==='MEMBER'?'/account/login':'/auth/login',200,{body:{email:identity.user.email,password}})).cookie;
  const admin=identities.SUPER_ADMIN.cookie,manager=identities.ACADEMY_MANAGER.cookie,member=identities.MEMBER.cookie;
+ // Mutations retain authentication, permission and CSRF boundaries.
+ await req('/admin/academy/scholarships/generate',401,{body:{}});
+ await req('/admin/academy/scholarships/generate',403,{cookie:member,body:{}});
+ await req('/admin/academy/scholarships/generate',403,{cookie:admin,body:{},headers:{'X-CSRF-Protection':''}});
+ assert.equal(await db.model('AcademyScholarship').countDocuments(),0);
  for(const path of ['/admin/academy/management/dashboard','/admin/academy/management/courses','/admin/academy/management/records/orders']){await req(path,401);await req(path,403,{cookie:member});await req(path,200,{cookie:manager});}
  assert.equal((await req('/admin/academy/management/dashboard',200,{cookie:admin})).data.courses,0);
  const create=async slug=>(await req('/admin/courses',201,{cookie:manager,body:{slug,title:`Managed ${slug}`,summary:'Supplied course overview',level:'beginner',prerequisites:['Actual prerequisite'],deliveryMode:'self-paced',duration:{value:2,unit:'hours'}}})).data;
@@ -34,7 +39,7 @@ test('Academy management reuses CRUD, roles, images, hashed codes and atomic cou
  await req(`/admin/academy/courses/${course.slug}`,200,{cookie:admin,body:{...loaded.config,thumbnail:{src:`media:${imageResult.data.id}`,alt:'Approved uploaded image'}}});
  assert.match((await req(`/academy/courses/${course.slug}`,200)).data.thumbnail.src,/synthetic.example.invalid/);
  // Default ANY code: exactly one selected purchasable course, never the whole catalog.
- const generated=(await req('/admin/academy/scholarships/generate',201,{cookie:admin,body:{label:'Owned default scholarship',expiresAt:new Date(Date.now()+3600000).toISOString()}})).data.codes[0];assert.match(generated.code,/^TF-[A-F0-9]{48}$/);
+ const generated=(await req('/admin/academy/scholarships/generate',201,{cookie:admin,body:{label:'Owned default scholarship',expiresAt:new Date(Date.now()+3600000).toISOString()}})).data.codes[0];assert.match(generated.code,/^TECHYFELLOW[A-Z0-9]{4}$/);
  const stored=await db.model('AcademyScholarship').findById(generated.id).select('+codeHash').lean();assert.equal(stored.anyCourse,true);assert.equal(stored.totalLimit,1);assert.equal(stored.perAccountLimit,1);assert.ok(!JSON.stringify(stored).includes(generated.code));
  const listing=await req('/admin/academy/management/records/scholarships',200,{cookie:admin});assert.ok(!JSON.stringify(listing).includes(generated.code));assert.ok(!JSON.stringify(listing).includes('codeHash'));
  assert.equal((await req('/academy/courses/managed-one/quote',200,{cookie:member,body:{code:generated.code}})).data.finalMinor,0);assert.equal(await db.model('AcademyEnrollment').countDocuments(),0);await req('/academy/courses/managed-one/lessons/private',403,{cookie:member});
@@ -44,6 +49,10 @@ test('Academy management reuses CRUD, roles, images, hashed codes and atomic cou
  const safeList=await req('/admin/academy/scholarships',200,{cookie:admin});assert.ok(!JSON.stringify(safeList).includes(noExpiry.code));assert.ok(!JSON.stringify(safeList).includes('generationKey'));
  const parsed=(await req('/admin/academy/management/video-preview',201,{cookie:manager,body:{input:'<iframe src="https://www.youtube.com/embed/M7lc1UVf-VE" allowfullscreen></iframe>'}})).data;assert.equal(parsed.embedUrl,'https://www.youtube.com/embed/M7lc1UVf-VE');await req('/admin/academy/management/video-preview',403,{cookie:member,body:{input:'https://vimeo.com/76979871'}});await req('/admin/academy/management/video-preview',400,{cookie:admin,body:{input:'<iframe src="https://youtu.be/M7lc1UVf-VE" onload="alert(1)"></iframe>'}});
  const otherLoaded=(await req(`/admin/academy/management/courses/${other.id}`,200,{cookie:admin})).data;const embedConfig={...otherLoaded.config,modules:otherLoaded.config.modules.map(section=>({...section,lessons:section.lessons.map(lesson=>({...lesson,type:'video',text:undefined,videoInput:'https://vimeo.com/76979871/5e2d1c1e6d'}))}))};await req(`/admin/academy/courses/${other.slug}`,200,{cookie:admin,body:embedConfig});
+ const persistedVideo=await db.model('LearningCourse').findOne({slug:other.slug}).lean();
+ assert.equal(persistedVideo.modules[0].lessons[0].embedUrl,'https://player.vimeo.com/video/76979871?h=5e2d1c1e6d');
+ await req(`/admin/academy/courses/${other.slug}`,400,{cookie:admin,body:{...embedConfig,revision:persistedVideo.revision,modules:[{...embedConfig.modules[0],lessons:[{...embedConfig.modules[0].lessons[0],videoInput:'<iframe src=\"https://evil.invalid/player\"></iframe>'}]}]}});
+ assert.equal((await db.model('LearningCourse').findOne({slug:other.slug})).revision,persistedVideo.revision);
  const publicCourse=await req(`/academy/courses/${other.slug}`,200);assert.ok(!JSON.stringify(publicCourse).includes('76979871'));assert.equal((await req(`/academy/courses/${other.slug}/lessons/intro`,200)).data.embedUrl,'https://player.vimeo.com/video/76979871?h=5e2d1c1e6d');await req(`/academy/courses/${other.slug}/lessons/private/media`,403,{cookie:member});
  const noExpiryOrder=await req(`/academy/courses/${other.slug}/orders`,200,{cookie:member,body:{code:noExpiry.code,idempotencyKey:randomUUID()}});assert.equal(noExpiryOrder.data.enrollmentConfirmed,true);assert.equal((await req(`/academy/courses/${other.slug}/lessons/private/media`,200,{cookie:member})).data.embedUrl,'https://player.vimeo.com/video/76979871?h=5e2d1c1e6d');assert.equal((await req('/admin/academy/management/records/scholarships?q='+noExpiry.id,200,{cookie:admin})).data[0].selectedCourses[0],other.slug);
  await db.model('AcademyScholarship').updateOne({_id:noExpiry.id},{$set:{generatedAt:new Date(Date.now()-16*60000)}});const late=await req('/admin/academy/scholarships/generate',201,{cookie:admin,body:generationBody});assert.equal(late.data.plaintextUnavailable,true);assert.equal(late.data.codes.length,0);assert.equal(await db.model('AcademyScholarship').countDocuments(),beforeCodes+1);

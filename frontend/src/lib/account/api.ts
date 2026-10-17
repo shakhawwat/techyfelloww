@@ -1,10 +1,10 @@
 import { api, ApiError } from '@/lib/admin/api';
-export interface AccountUser { id: string; name?: string; email: string; role: string; emailVerified: boolean }
+export interface AccountUser { id: string; name?: string; photoUrl?: string; email: string; role: string; emailVerified: boolean }
 export async function accountRequest<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   try { return await api<T>(`/account/${path}`, method, body); }
   catch (error) {
     const status = error instanceof ApiError ? error.status : 0;
-    const messages: Record<number, string> = {400:'Check your details. An account could not be created with those values.',401:'Email or password is incorrect, or this account cannot sign in.',403:'This request could not be authorized. Reload and try again.',429:'Too many attempts. Please try again later.'};
+    const messages: Record<number, string> = {400:path==='login'?'Enter a valid email address and password.':'Check your details. An account could not be created with those values.',401:'Email or password is incorrect, or this account cannot sign in.',403:'This request could not be authorized. Reload and try again.',429:'Too many attempts. Please try again later.'};
     throw new ApiError(status, messages[status] ?? 'The account service is unavailable. Please try again.');
   }
 }

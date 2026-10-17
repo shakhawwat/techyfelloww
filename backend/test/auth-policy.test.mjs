@@ -29,7 +29,7 @@ test('finite permission matrix separates read/edit/publish and denies unknown pe
 test('global guard denies missing policy, empty grants and forged roles; explicit reads allow viewer', async () => {
   let policy;
   let role = 'SUPER_ADMIN';
-  const guard = new AccessGuard({ getAllAndOverride: () => policy, get: () => undefined }, { get: () => 'test', getOrThrow: () => [] }, {
+  const guard = new AccessGuard({check:async()=>{}}, { getAllAndOverride: () => policy, get: () => undefined }, { get: () => 'test', getOrThrow: () => [] }, {
     authenticate: async () => ({ user: { id: 'synthetic', role }, sessionId: 'synthetic' }),
   });
   const req = { method: 'GET', headers: {}, query: {}, get: () => undefined };
@@ -48,6 +48,17 @@ test('global guard denies missing policy, empty grants and forged roles; explici
 
 test('cookie settings and strict origin/proxy/lifetime validation', () => {
   assert.equal(cookieName(true), '__Host-techyfellow_session');
+  assert.equal(cookieName(true,true),'__Host-techyfellow_member_session');
+  const admin='b'.repeat(43),member='c'.repeat(43),both=`techyfellow_session=${admin}; techyfellow_member_session=${member}`;
+  assert.equal(readSessionToken({path:'/api/v1/account/me',headers:{cookie:both}},false),member);
+  assert.equal(readSessionToken({path:'/api/v1/account/store/state',headers:{cookie:both}},false),member);
+  assert.equal(readSessionToken({path:'/api/v1/account/store/state',headers:{cookie:`techyfellow_session=${admin}`}},false),undefined);
+  assert.equal(readSessionToken({path:'/api/v1/admin/store/orders',headers:{cookie:both}},false),admin);
+  assert.equal(readSessionToken({path:'/api/v1/admin/blog',headers:{cookie:both}},false),admin);
+  assert.equal(readSessionToken({path:'/api/v1/academy/admin/orders/id/memo',headers:{cookie:both}},false),admin);
+  assert.equal(readSessionToken({path:'/api/v1/academy/cart',headers:{cookie:both}},false),member);
+  assert.equal(readSessionToken({path:'/api/v1/account/login',headers:{cookie:`techyfellow_session=${admin}`}},false),undefined);
+  assert.equal(readSessionToken({path:'/api/v1/admin/blog',headers:{cookie:`techyfellow_member_session=${member}`}},false),undefined);
   assert.deepEqual(cookieOptions(true), { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
   assert.equal(cookieOptions(false).secure, false);
   const token = 'a'.repeat(43);

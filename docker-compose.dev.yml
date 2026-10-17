@@ -21,6 +21,10 @@ services:
     build:
       target: development
     environment:
+      MALWARE_SCANNER_HOST: ${MALWARE_SCANNER_HOST:-}
+      MALWARE_SCANNER_PORT: ${MALWARE_SCANNER_PORT:-3310}
+      COMMUNITY_FLAG_TERMS: '${COMMUNITY_FLAG_TERMS:-[]}'
+      COMMUNITY_MAX_LINKS: ${COMMUNITY_MAX_LINKS:-8}
       NODE_ENV: development
       MONGODB_URI: mongodb://mongodb:27017/techyfellow?replicaSet=rs0
       AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}

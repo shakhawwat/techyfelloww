@@ -1,23 +1,26 @@
 'use client';
 import {useCallback,useEffect,useRef,useState,useSyncExternalStore,type CSSProperties,type PointerEvent} from 'react';
 import {Bot,BookOpen,BrainCircuit,Cog,FlaskConical,GraduationCap,Microscope,Presentation,Settings,ShoppingBag,Trophy,Users} from 'lucide-react';
+import {useHomeSections} from './home-editorial';
 import styles from './institutional-carousel.module.css';
-export const institutionalCategories=[
+export const defaultInstitutionalCategories=[
  {title:'Lab setup',Icon:Microscope},{title:'Workshops',Icon:Users},{title:'Technical training',Icon:Presentation},
  {title:'Robotics programs',Icon:Bot},{title:'STEM learning programs',Icon:BrainCircuit},{title:'Faculty development',Icon:GraduationCap},
  {title:'Research collaboration',Icon:FlaskConical},{title:'Curriculum support',Icon:BookOpen},{title:'Competition preparation',Icon:Trophy},
  {title:'Project mentorship',Icon:GraduationCap},{title:'Industry automation consulting',Icon:Cog},{title:'Equipment selection',Icon:ShoppingBag},{title:'Lab maintenance planning',Icon:Settings},
 ] as const;
+export const institutionalCategories=defaultInstitutionalCategories;
 function subscribe(callback:()=>void){const motion=window.matchMedia('(prefers-reduced-motion: reduce)');window.addEventListener('resize',callback);document.addEventListener('visibilitychange',callback);motion.addEventListener('change',callback);return()=>{window.removeEventListener('resize',callback);document.removeEventListener('visibilitychange',callback);motion.removeEventListener('change',callback);};}
 function snapshot(){return `${window.innerWidth>=1024?5:window.innerWidth>=768?3:1}:${window.matchMedia('(prefers-reduced-motion: reduce)').matches}:${document.hidden}`;}
 function serverSnapshot(){return '5:false:true';}
 export function InstitutionalCarousel(){
+ const sections=useHomeSections(),institutionalCategories=defaultInstitutionalCategories.map((item,index)=>({...item,title:sections.find(section=>section.key===`institutional-${index+1}`)?.title??item.title}));
  const environment=useSyncExternalStore(subscribe,snapshot,serverSnapshot),[count,motion,hidden]=environment.split(':'),visible=Number(count),reduced=motion==='true';
  const [index,setIndex]=useState(0),[step,setStep]=useState(0),[paused,setPaused]=useState(false),[hover,setHover]=useState(false),[focus,setFocus]=useState(false),[drag,setDrag]=useState(0);
  const suppressClick=useRef(false);
  const moving=useRef(false),gesture=useRef<{id:number;x:number;y:number;horizontal:boolean;delta:number}|null>(null);
- const move=useCallback((direction:number)=>{if(moving.current||direction===0)return;if(reduced){setIndex(value=>(value+direction+institutionalCategories.length)%institutionalCategories.length);return;}moving.current=true;setStep(direction);},[reduced]);
- useEffect(()=>{if(!step)return;const timer=window.setTimeout(()=>{setIndex(value=>(value+step+institutionalCategories.length)%institutionalCategories.length);setStep(0);moving.current=false;},500);return()=>window.clearTimeout(timer);},[step]);
+ const move=useCallback((direction:number)=>{if(moving.current||direction===0)return;if(reduced){setIndex(value=>(value+direction+institutionalCategories.length)%institutionalCategories.length);return;}moving.current=true;setStep(direction);},[reduced,institutionalCategories.length]);
+ useEffect(()=>{if(!step)return;const timer=window.setTimeout(()=>{setIndex(value=>(value+step+institutionalCategories.length)%institutionalCategories.length);setStep(0);moving.current=false;},500);return()=>window.clearTimeout(timer);},[step,institutionalCategories.length]);
  useEffect(()=>{if(paused||hover||focus||hidden==='true'||reduced)return;const timer=window.setInterval(()=>{if(!gesture.current)move(1);},5000);return()=>window.clearInterval(timer);},[paused,hover,focus,hidden,reduced,move]);
  function manual(direction:number){setPaused(true);move(direction);}
  function start(event:PointerEvent<HTMLDivElement>){if(event.button!==0||moving.current||(event.target as HTMLElement).closest('a,input,button:not([data-carousel-card])'))return;setPaused(true);suppressClick.current=false;gesture.current={id:event.pointerId,x:event.clientX,y:event.clientY,horizontal:false,delta:0};}

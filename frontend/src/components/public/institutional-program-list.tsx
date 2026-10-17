@@ -1,5 +1,6 @@
 'use client';
 
+import type {EditorialPage} from '@/lib/public/editorial';
 import Link from 'next/link';
 import { institutionalProgramMedia } from '@/content/institutional-program-media';
 import { ArrowUpRight } from 'lucide-react';
@@ -12,7 +13,9 @@ import { ExpandableMediaList } from './expandable-media-list';
 function Items({ title, items }: { title: string; items: readonly string[] }) {
   return <section><h4>{title}</h4><ul>{items.map(item => <li key={item}>{item}</li>)}</ul></section>;
 }
-export function InstitutionalProgramList({ audience }: { audience?: InstitutionalAudience }) {
+export function InstitutionalProgramList({ audience,published=[] }: { audience?: InstitutionalAudience;published?:EditorialPage[] }) {
+  const approved=published.filter(program=>!audience||!program.programAudience||program.programAudience===audience);
+  if(approved.length)return <ExpandableMediaList label="Published institutional programs" viewLabel="View program scope" hideLabel="Hide program scope" items={approved.map(program=>{const image=program.media?.find(media=>media.type==='image');return {id:program.slug,title:program.title,description:program.summary,metadata:program.illustrativeNotice??'Published program scope · Availability requires confirmation',media:image?{src:image.url,alt:image.altText}:undefined,details:<div className={styles.scope}>{program.details?.map(block=><section key={block.title}><h4>{block.title}</h4>{block.text&&<p>{block.text}</p>}{block.items&&<ul>{block.items.map(item=><li key={item}>{item}</li>)}</ul>}</section>)}{program.blocks?.map(block=><section key={block.title}><h4>{block.title}</h4>{block.text&&<p>{block.text}</p>}{block.items&&<ul>{block.items.map(item=><li key={item}>{item}</li>)}</ul>}</section>)}<Items title="Capabilities" items={program.capabilities??[]}/><Items title="Deliverables" items={program.deliverables??[]}/><Items title="Responsibilities" items={program.responsibilities??[]}/>{program.faqs?.map(faq=><details key={faq.question}><summary>{faq.question}</summary><p>{faq.answer}</p></details>)}<Link className={styles.action} href={program.inquiryHref??inquiryHref('institutional')}>Discuss this program<ArrowUpRight aria-hidden="true"/></Link></div>};})}/>;
   const programs = institutionalPrograms.filter(program => !audience || program.audience === audience);
   return <ExpandableMediaList label="Illustrative institutional programs" viewLabel="View program scope" hideLabel="Hide program scope" items={programs.map(program => {
     const institution = serviceGroups.institutional.items.find(item => item.slug === program.audience)!;

@@ -1,5 +1,6 @@
 'use client';
 import Image from 'next/image';
+import type {EditorialPage} from '@/lib/public/editorial';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen } from 'lucide-react';
@@ -29,7 +30,7 @@ function CourseCard({course}:{course:Course}) {
       <h3 title={course.title}>{course.title}</h3><p className={catalogStyles.description}>{course.description}</p>
       <div className={catalogStyles.tags}><span>{course.category??'Published course'}</span>{course.level&&<span className={catalogStyles.level} data-level={course.level}>{course.level}</span>}</div>
       <div className={catalogStyles.meta}>{!!course.modules.length&&<span>{course.modules.length} {course.demo?'proposed modules':'modules'}</span>}{course.duration&&!course.demo&&<span>{course.duration}</span>}{course.demo&&<span>Schedule to be confirmed</span>}</div>
-      <AcademyPrice courseId={course.id}/><Link prefetch={false} className={catalogStyles.action} href={`/academy/courses/${course.id}`} aria-label={`View course: ${course.title}`}>View course<ArrowUpRight aria-hidden="true"/></Link><AcademyAddToCart courseId={course.id} className={catalogStyles.action}/>
+      <AcademyPrice courseId={course.id} published={!course.demo} illustrative={course.illustrative}/><div className={catalogStyles.cardActions}><Link prefetch={false} className={`${catalogStyles.cardAction} ${catalogStyles.viewCourse}`} href={`/academy/courses/${course.id}`} aria-label={`View course: ${course.title}`}>View course<ArrowUpRight aria-hidden="true"/></Link><AcademyAddToCart cardAction courseId={course.id} className={`${catalogStyles.cardAction} ${catalogStyles.addCart}`}/></div>
     </div>
   </li>;
 }
@@ -47,7 +48,8 @@ const pathways=[
   {title:'Applied AI & Computer Vision',categories:['AI & Vision'],description:'Explore image preparation, model baselines and transparent evaluation of intelligent systems.'},
   {title:'Research Engineering',categories:['Research'],description:'Develop reproducible computational workflows and plan a research question with clear evaluation criteria.'},
 ];
-export function AcademyCatalog({result,initialSearch='',initialCategory='All'}:{result:ListResult;initialSearch?:string;initialCategory?:string}) {
+export function AcademyCatalog({result,page,initialSearch='',initialCategory='All'}:{result:ListResult;page?:EditorialPage|null;initialSearch?:string;initialCategory?:string}) {
+  const section=(key:string)=>page?.sections.find(item=>item.key===key);
   const courses=academyCatalogEntries(result),[search,setSearch]=useState(initialSearch),[category,setCategory]=useState(courses.some(course=>course.category===initialCategory)?initialCategory:'All'),[level,setLevel]=useState('All'),[sort,setSort]=useState('preview');
   const availableCategories=categories.filter(item=>courses.some(course=>course.category===item));
   const otherCategories=[...new Set(courses.map(course=>course.category).filter((value):value is string=>!!value&&!categories.includes(value)))];
@@ -57,12 +59,12 @@ export function AcademyCatalog({result,initialSearch='',initialCategory='All'}:{
   const demo=courses.some(course=>course.demo);
   const relatedAI=matching.filter(course=>course.category==='AI & Agents'||(!demo&&course.category==='AI & Vision'));
   const states=<>{result.state==='unavailable'?<p className={catalogStyles.state} role="status">{copy.academy.courseUnavailable}</p>:<>{!courses.length&&<p className={catalogStyles.state}>{copy.academy.courseEmpty}</p>}<p className={catalogStyles.count} role="status">{matching.length} {demo?'illustrative previews':'published course previews'}{result.data.length>0?` of ${result.pagination.total} published records`:''} · Search and filters apply to the available preview collection.</p>{courses.length>0&&!matching.length&&<div className={catalogStyles.state}><h3>No courses match your selection.</h3><p>Try another search, category or level.</p><button className={catalogStyles.action} type="button" onClick={()=>{setSearch('');setCategory('All');setLevel('All');}}>Clear search and filters</button></div>}</>}</>;
-  return <><AcademyHeroSlider><nav className={styles.breadcrumbs} aria-label="Breadcrumb"><ol><li><Link href="/">Home</Link></li><li aria-current="page">Academy</li></ol></nav></AcademyHeroSlider>
+  return <><AcademyHeroSlider page={page}><nav className={styles.breadcrumbs} aria-label="Breadcrumb"><ol><li><Link href="/">Home</Link></li><li aria-current="page">Academy</li></ol></nav></AcademyHeroSlider>
     <Section tone="light" className={`${catalogStyles.catalog} ${discovery.showcase}`} aria-labelledby="academy-areas-title">
-      <div className={discovery.showcaseLayout}><header><h2 id="academy-areas-title">Explore learning areas</h2><p className={discovery.intro}>Build practical skills in engineering, intelligent systems and research. Find course requirements that fit your next step.</p><Link className={catalogStyles.action} href="/academy/courses">Explore published courses<ArrowUpRight aria-hidden="true"/></Link></header><ul className={discovery.showcaseTiles}>{pathways.map(pathway=>{const related=courses.filter(course=>course.category&&pathway.categories.includes(course.category));if(!related.length)return null;const image=related.find(course=>course.image)?.image;return <li key={pathway.title}><Link href={`/academy?category=${encodeURIComponent(related[0].category!)}#academy-catalog-results`}><div className={discovery.pathwayImage}>{image?<Image src={image.src} alt={image.alt} fill sizes="(max-width:767px) 45vw, 220px"/>:<BookOpen aria-hidden="true"/>}</div><h3>{pathway.title}</h3></Link></li>;})}</ul></div>
+      <div className={discovery.showcaseLayout}><header><h2 id="academy-areas-title">Explore learning areas</h2><p className={discovery.intro}>{section('areas')?.description??'Build practical skills in engineering, intelligent systems and research. Find course requirements that fit your next step.'}</p><Link className={catalogStyles.action} href="/academy/courses">Explore published courses<ArrowUpRight aria-hidden="true"/></Link></header><ul className={discovery.showcaseTiles}>{pathways.map(pathway=>{const related=courses.filter(course=>course.category&&pathway.categories.includes(course.category));if(!related.length)return null;const image=related.find(course=>course.image)?.image;return <li key={pathway.title}><Link href={`/academy?category=${encodeURIComponent(related[0].category!)}#academy-catalog-results`}><div className={discovery.pathwayImage}>{image?<Image src={image.src} alt={image.alt} fill sizes="(max-width:767px) 45vw, 220px"/>:<BookOpen aria-hidden="true"/>}</div><h3>{pathway.title}</h3></Link></li>;})}</ul></div>
     </Section>
     <Section tone="light" className={`${catalogStyles.catalog} ${discovery.featured}`} aria-label="Featured course collection">
-      <div className={catalogStyles.notice}><p>Course previews only. Enrollment, payments and certification are not available; schedules are unconfirmed. No scheduled cohort is offered.</p>{demo&&<p className={catalogStyles.demoNotice}>{academyDemoNotice} Images are illustrative; pathways are suggestions, not accredited qualifications.</p>}</div>
+      <div className={catalogStyles.notice}><p>Paid checkout requires a configured payment provider. Course enrollment and lesson access follow the saved course settings; schedules and certification require confirmation.</p>{demo&&<p className={catalogStyles.demoNotice}>{academyDemoNotice} Images are illustrative; pathways are suggestions, not accredited qualifications.</p>}</div>
       {states}{matching.length>0&&<CourseRow title="Explore current skills" id="academy-featured" courses={matching}/>}
     </Section>
     <Section tone="light" className={`${catalogStyles.catalog} ${discovery.discovery}`} aria-labelledby="academy-catalog-title">
@@ -72,6 +74,6 @@ export function AcademyCatalog({result,initialSearch='',initialCategory='All'}:{
       <div id="academy-catalog-results">{matching.length?<CourseRow title="Explore course previews" id="academy-discovery" courses={matching}/>:<p className={discovery.empty}>{result.state==='unavailable'?'Course information is currently unavailable.':'No courses match the current selection. Try another category, search or level.'}</p>}</div>
     </Section>
     <AcademyTechnologySlider/>
-    <AcademyLowerSections courses={courses} demo={demo} aiRow={relatedAI.length>0?<CourseRow title="Explore AI course previews" id="academy-ai" courses={relatedAI}/>:null}/>
+    <AcademyLowerSections page={page} courses={courses} demo={demo} aiRow={relatedAI.length>0?<CourseRow title="Explore AI course previews" id="academy-ai" courses={relatedAI}/>:null}/>
   </>;
 }

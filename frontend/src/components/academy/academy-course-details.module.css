@@ -90,3 +90,21 @@
 .orderTotals { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; max-width:560px; margin-block:24px; padding-block:18px; border-block:1px solid var(--academy-line); }
 .orderTotals dd { margin:0; text-align:right; }
 .orderTotals dt:last-of-type,.orderTotals dd:last-of-type { color:#16C2FF; font-weight:650; }
+
+/* Course-view options only; order pages and lesson controls keep their existing styling. */
+.summaryBody .action,.summaryBody .summaryWishlist button {width:100%;min-height:44px;gap:8px;border:1px solid #30748f;border-radius:4px;background:transparent;color:#a8e8ff;font-weight:600;line-height:1.4;text-decoration:none;transition:background-color 200ms ease,border-color 200ms ease,color 200ms ease;}
+.summaryBody .action {margin-top:8px;}
+.summaryBody .primary {background:#16C2FF;border-color:#16C2FF;color:#07111F!important;}
+.summaryBody .action svg,.summaryBody .summaryWishlist svg {width:16px;height:16px;flex:none;transition:transform 200ms ease;}
+.summaryBody .action:disabled,.summaryBody .summaryWishlist button:disabled {opacity:1;background:#274e60;border-color:#53798a;color:#daeaf2!important;cursor:not-allowed;}
+.summaryBody :is(.action,.summaryWishlist button):focus-visible {outline:2px solid #16C2FF;outline-offset:3px;}
+.optionActions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px;container-type:inline-size;}
+.optionActions .action {margin:0;min-width:0;padding:10px 8px;font-size:12px;}
+.optionActions .action:only-child {grid-column:1/-1;}
+.optionActions>[role=alert] {grid-column:1/-1;font-size:12px;color:#ffb9b9;}
+.summaryBody .summaryWishlist {width:100%;margin-block:8px;}
+.summaryBody .summaryWishlist button[aria-pressed=true] {border-color:#16C2FF;background:#123244;color:#d9f5ff;}
+@media(hover:hover) and (pointer:fine) {.summaryBody .action:not(:disabled):hover,.summaryBody .summaryWishlist button:not(:disabled):hover {background:#123244;border-color:#69daff;color:#d9f5ff;}.summaryBody .primary:not(:disabled):hover {background:#52d2ff;border-color:#9ae6ff;}.summaryBody .action:not(:disabled):hover svg,.summaryBody .summaryWishlist button:not(:disabled):hover svg {transform:translateX(2px);}}
+@media(max-width:379px) {.optionActions {grid-template-columns:1fr;}}
+@container(max-width:255px) {.optionActions .action {grid-column:1/-1;}}
+@media(prefers-reduced-motion:reduce) {.summaryBody .action,.summaryBody .action svg,.summaryBody .summaryWishlist button,.summaryBody .summaryWishlist svg {transition:none;}.summaryBody .action:not(:disabled):hover svg,.summaryBody .summaryWishlist button:not(:disabled):hover svg {transform:none;}}

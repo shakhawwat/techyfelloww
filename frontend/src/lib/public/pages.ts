@@ -8,7 +8,7 @@ export const filters = {
   research: ['domain', 'researchStage'],
   publications: ['author', 'venue', 'year'],
   courses: ['level', 'deliveryMode'],
-  team: ['expertise'],
+  team: ['expertise','classification'],
 } as const;
 export const courseLevels = ['beginner', 'intermediate', 'advanced'] as const;
 export const deliveryModes = ['self-paced', 'live-online', 'in-person', 'hybrid'] as const;
@@ -16,6 +16,8 @@ export function pagePath(kind: PageKind): string { return kind === 'courses' ? '
 export const researchStages = ['planned', 'active', 'paused', 'completed'] as const;
 export type ListQuery = { page: number; limit: number; sort: string; values: Record<string, string>; params: string };
 export type PublicRecord = PublishedItem & {
+  details?:{title:string;text?:string;items?:string[]}[];
+  teamRequirements?:string[];approvedLinks?:{label:string;url:string}[];abstract?:string;citation?:string;paperUrl?:string;metrics?:{label:string;value:number;year:number;source:string;verified:boolean}[];videoInput?:string;repositoryUrl?:string;documents?:{url:string;altText:string}[];
   problem?: string; approach?: string; technologies: string[]; results: string[]; methods: string[];
   contributors: { name: string }[]; doi?: string; publisherUrl?: string;
   prerequisites: string[]; syllabus: { title: string; topics: string[] }[]; duration?: { value: number; unit: 'hours' | 'weeks' };
@@ -50,6 +52,7 @@ export function parseListQuery(kind: PageKind, raw: Search): ListQuery {
     if (key === 'researchStage' && !researchStages.includes(value as typeof researchStages[number])) throw Error('Choose a supported research stage.');
     if (key === 'level' && !courseLevels.includes(value as typeof courseLevels[number])) throw Error('Choose a supported course level.');
     if (key === 'deliveryMode' && !deliveryModes.includes(value as typeof deliveryModes[number])) throw Error('Choose a supported delivery mode.');
+    if(key==='classification'&&!['team','board'].includes(value))throw Error('Choose team or board.');
     if (key === 'year') integer(value, 1, 9999);
     values[key] = value;
   }
@@ -76,6 +79,7 @@ export function doiUrl(doi: string | undefined): string | undefined {
   return `https://doi.org/${doi.split('/').map(encodeURIComponent).join('/')}`;
 }
 export function approvedImage(url: string): boolean {
+  if(/^\/banner\/[a-zA-Z0-9][a-zA-Z0-9_.-]*\.(?:jpg|jpeg|png|webp)$/.test(url))return true;
   try { const u = new URL(url); return !!process.env.NEXT_PUBLIC_MEDIA_HOST && u.protocol === 'https:' && u.hostname === process.env.NEXT_PUBLIC_MEDIA_HOST && !u.port && !u.username && !u.password && !u.search && !u.hash && /^\/techyfellow\/media\/[a-f0-9]{32}\.(jpg|png|webp)$/.test(u.pathname); } catch { return false; }
 }
 function text(value: unknown, max: number): string | undefined { return typeof value === 'string' && value.trim() && value.length <= max ? value : undefined; }
@@ -84,6 +88,12 @@ export function decodeRecord(value: unknown, kind: PageKind, now: number): Publi
   const item = decodePublicList({ data: [value] }, kind, now)[0], raw = value as Record<string, unknown>;
   const seo = raw.seo && typeof raw.seo === 'object' ? raw.seo as Record<string, unknown> : undefined;
   const record: PublicRecord = { ...item, technologies: texts(raw.technologies), results: texts(raw.results), methods: texts(raw.methods), contributors: [], prerequisites: [], syllabus: [], profileLinks: [], seo: seo ? { title: text(seo.title, 160), description: text(seo.description, 320), canonicalUrl: safeHttps(seo.canonicalUrl) } : undefined };
+  record.details=Array.isArray(raw.details)?raw.details.map((row:Record<string,unknown>)=>({title:text(row.title,200)??"",text:text(row.text,20000),items:texts(row.items)})).filter(row=>!!row.title):[];
+  record.teamRequirements=texts(raw.teamRequirements);record.abstract=text(raw.abstract,20000);record.citation=text(raw.citation,10000);record.paperUrl=safeHttps(raw.paperUrl);record.repositoryUrl=safeHttps(raw.repositoryUrl);
+  const video=safeHttps(raw.videoInput);if(video&&/^https:\/\/(?:www.youtube.com\/embed\/[a-zA-Z0-9_-]{11}|player.vimeo.com\/video\/[0-9]+(?:\?h=[a-fA-F0-9]+)?)$/.test(video))record.videoInput=video;
+  if(Array.isArray(raw.approvedLinks))record.approvedLinks=raw.approvedLinks.flatMap(link=>{const label=text(link.label,160),url=safeHttps(link.url);return label&&url?[{label,url}]:[];});
+  if(Array.isArray(raw.metrics))record.metrics=raw.metrics.filter(m=>m.verified===true&&text(m.label,160)&&Number.isFinite(m.value)&&m.value>=0&&Number.isInteger(m.year)&&m.year>0&&m.year<=9999&&safeHttps(m.source));
+  if(Array.isArray(raw.media))record.documents=raw.media.filter(m=>m.type==='document'&&safeHttps(m.url)&&text(m.altText,500)).map(m=>({url:m.url,altText:m.altText}));
   if (kind === 'projects') { record.problem = text(raw.problem, 10000); record.approach = text(raw.approach, 10000); if (!record.category || !record.problem || !record.approach) throw Error('Invalid project'); }
   if (kind === 'research') {
     if (!record.domain || !researchStages.includes(record.researchStage as typeof researchStages[number])) throw Error('Invalid research');
@@ -106,7 +116,7 @@ export function decodeRecord(value: unknown, kind: PageKind, now: number): Publi
       if (!Array.isArray(raw.syllabus) || raw.syllabus.length > 100) throw Error('Invalid syllabus');
       record.syllabus = raw.syllabus.map(section => { const title = text(section?.title, 200); if (!title) throw Error('Invalid syllabus title'); return { title, topics: texts(section.topics) }; });
     }
-    record.media = undefined;
+    // Keep scoped published course images resolved by the content API.
   }
   if (kind === 'team') {
     if (!record.biography) throw Error('Invalid biography');
@@ -115,8 +125,7 @@ export function decodeRecord(value: unknown, kind: PageKind, now: number): Publi
       if (!Array.isArray(raw.profileLinks) || raw.profileLinks.length > 100) throw Error('Invalid profile links');
       record.profileLinks = raw.profileLinks.flatMap(link => { const label = text(link?.label, 160), url = safeHttps(link?.url); return label && url && link.approved !== false ? [{ label, url }] : []; });
     }
-    // The current API has no approved profile-photo field. Never consume arbitrary image properties.
-    record.media = undefined;
+    // Scoped, ready media references are resolved by the public API and decoded above.
   }
   return record;
 }

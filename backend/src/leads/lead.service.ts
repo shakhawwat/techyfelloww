@@ -1,10 +1,11 @@
+import {StaffRolesService} from "../auth/staff-roles.service";
 import { NotificationService } from "../notifications/notification.service";
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { InjectConnection, InjectModel } from "@nestjs/mongoose";
 import { randomBytes } from "node:crypto";
 import { Connection, Model, Types, type ClientSession } from "mongoose";
 import { hashToken, type AuthIdentity } from "../auth/auth-http";
-import { hasPermission } from "../auth/permissions";
+import { hasIdentityPermission } from "../auth/permissions";
 import type { UserRecord } from "../auth/auth.schemas";
 import { leadId, parseInquiry, parseLeadQuery, parseLeadUpdate, invalid } from "./lead-input";
 import { transitions, type LeadRecord, type LeadAuditRecord, type LeadThrottleRecord } from "./lead.schema";
@@ -18,8 +19,8 @@ export function leadDto(record: Record<string, unknown>, detail: boolean) {
 export class LeadService {
   constructor(@InjectConnection() private readonly connection: Connection, private readonly notifications: NotificationService,
     @InjectModel("Lead") private readonly leads: Model<LeadRecord>, @InjectModel("LeadAudit") private readonly audits: Model<LeadAuditRecord>,
-    @InjectModel("LeadThrottle") private readonly throttles: Model<LeadThrottleRecord>, @InjectModel("User") private readonly users: Model<UserRecord>) {}
-  private authorize(actor: AuthIdentity, action: "read" | "manage") { if (!hasPermission(actor.role, `leads:${action}`)) throw new ForbiddenException(); }
+    @InjectModel("LeadThrottle") private readonly throttles: Model<LeadThrottleRecord>, @InjectModel("User") private readonly users: Model<UserRecord>,private readonly staffRoles:StaffRolesService) {}
+  private authorize(actor: AuthIdentity, action: "read" | "manage") { if (!hasIdentityPermission(actor, `leads:${action}`)) throw new ForbiddenException(); }
   private failure(error: unknown): never { if (error instanceof HttpException) throw error; throw new ServiceUnavailableException(); }
   private async throttle(identity: string, limit: number) {
     const window = Math.floor(Date.now() / 900000), key = hashToken(`${identity}:${window}`);
@@ -66,7 +67,8 @@ export class LeadService {
     this.authorize(actor, "manage"); const { page, limit, skip } = parseLeadQuery(raw);
     if (Object.keys(raw).some(key => !["page", "limit"].includes(key))) return invalid("query");
     try {
-      const filter = { enabled: true, role: { $in: ["SUPER_ADMIN", "SALES_MANAGER"] as const } };
+      const eligible=(await this.staffRoles.available()).filter(role=>role.permissions.includes("leads:manage")).map(role=>role.role);
+      const filter = { enabled: true, role: { $in: eligible } };
       const [users, total] = await Promise.all([this.users.find(filter).select("email role").sort({ email: 1 }).skip(skip).limit(limit).maxTimeMS(1500).lean(), this.users.countDocuments(filter).maxTimeMS(1500)]);
       return { data: users.map(user => ({ id: String(user._id), email: user.email, role: user.role })), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
     } catch (error) { return this.failure(error); }
@@ -86,7 +88,11 @@ export class LeadService {
         const changes: Record<string, unknown> = {}, unset: Record<string, 1> = {}, fields: string[] = [];
         if (input.status !== undefined) { if (!transitions[lead.status].includes(input.status)) throw new ConflictException(); changes.status = input.status; fields.push("status"); }
         if (input.ownerId !== undefined) {
-          if (input.ownerId !== null && !await this.users.exists({ _id: new Types.ObjectId(input.ownerId), enabled: true, role: { $in: ["SUPER_ADMIN", "SALES_MANAGER"] } }).session(session!).maxTimeMS(1500)) throw new BadRequestException({ fields: ["ownerId"] });
+          if (input.ownerId !== null) {
+            const owner=await this.users.findOne({_id:new Types.ObjectId(input.ownerId),enabled:true}).session(session!).maxTimeMS(1500).lean();
+            const policy=await this.staffRoles.resolve(owner?.role,session!);
+            if(!owner||!policy.known||!policy.permissions.includes("leads:manage"))throw new BadRequestException({fields:["ownerId"]});
+          }
           if ((lead.ownerId ? String(lead.ownerId) : null) !== input.ownerId) { if (input.ownerId === null) unset.ownerId = 1; else changes.ownerId = new Types.ObjectId(input.ownerId); fields.push("ownerId"); }
         }
         if (input.note) { if (lead.notes.length >= 1000) throw new ConflictException(); fields.push("note"); }

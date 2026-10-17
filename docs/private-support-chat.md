@@ -1,0 +1,40 @@
+# Compact user support chat
+
+The actual `/account/inbox`, `/account/inbox/:id` and compatible `/account/messages` routes render `UserChat` through the existing `ClientMessages` export. The user surface has message history and a bottom composer, with no Inbox title, sidebar, new-conversation button, pagination, subject or category inputs. Admin navigation is retained; the shared admin chat described below keeps conversation management and renders authorized attachment and audio controls.
+
+`GET /api/v1/account/chat` combines the user's existing conversation history. A notification's conversation ID can be passed as `?conversation=:id`; it must belong to the authenticated user. `POST /api/v1/account/chat/messages` automatically reuses that owned thread or the latest support thread and creates one on the first send if needed. Full threads continue into a new thread without deleting old messages. The previous conversation APIs and admin Inbox remain connected to the same records. Read cursors and reply notifications continue to use the existing ownership and permission checks.
+
+## Attachments and device access
+
+Images (JPEG, PNG, WebP), PDFs and recorded audio are uploaded with a stable per-file key using authenticated multipart `POST /api/v1/support/media`. Files are selected or captured locally and can be previewed and removed before sending. PDF previews open the local blob in a separate browser viewer. Text-only and attachment-only messages are supported. Real XHR upload progress, failure state and retry are displayed; message keys and file keys persist during failures.
+
+Camera and microphone access begins only after clicking their icons. Camera supports capture, retake and cancel. Voice recording supports a timer, stop, playback preview, delete and send, with an automatic stop at 120 seconds. MediaRecorder selects supported WebM/Opus, Ogg/Opus or MP4 audio. Streams, recorders, timers, uploads and blob URLs are stopped or released on cancellation, unmount, account change, pagehide and document hiding. Late permission grants after cancellation are closed immediately.
+
+The existing content media storage publishes assets and is unsuitable for private messages. Chat reuses existing image decoding/re-encoding and PDF validation, with private binary storage in MongoDB's `support_attachments` collection. Files are limited to 8 MiB each, 3 per message and a 200 MiB account storage allowance; uploads are limited to 30 attempts/minute. Images are decoded and stripped of metadata; unsupported types and malformed signatures are rejected. Audio container/codec signatures are checked. PDFs are served as downloads, never executable HTML.
+
+`GET /api/v1/support/media/:id` checks the owner or explicit admin/inbox read permissions on every request. Staff can read only files bound to actual conversation messages. Responses use private/no-store caching, nosniff, sanitized names and byte-range support. No public media URL is created. Message metadata and file binding are committed together in a MongoDB transaction; retries cannot append a second message or bind a file to a different message. Separate binary documents keep the existing conversation documents below MongoDB's document size limit.
+
+Unused staged uploads expire after 24 hours via a TTL index; attached files remain with the conversation history. Before enabling in another environment, use the existing backend build and `npm run db:indexes` command to create the new attachment owner/expiry indexes. Nginx's dedicated upload location accepts the 8 MiB file plus its bounded multipart envelope (9 MiB request limit). No new external service, storage credentials or sending integration is required.
+
+## Verification
+
+- Backend/frontend lint, typecheck and builds.
+- `backend/test/chat-media.integration.test.mjs`: automatic conversation reuse, text and attachment-only sends, file/message deduplication, image/PDF/audio validation, upload limits, private reads, audio ranges, cross-user/staff denial, admin replies, notifications and login persistence.
+- Existing messaging and reply-notification integration suites.
+- `frontend/test/simple-chat-browser.mjs`: inspects the rendered Inbox DOM; checks text and upload failures/retries, file previews/removal, camera denial/capture/retake/cancel, voice timer/preview/delete/send, playback in user/admin views, navigation cleanup, history after refresh, notifications, mobile hit targets/layout and the existing FAQ assistant. Chrome uses simulated camera/microphone devices in an isolated browser profile and a random, disposable MongoDB database. Its proxy uses local port 8083; screenshots are in `artifacts/messaging/simple-chat-*.png`.
+
+Physical camera/microphone hardware checks: NOT RUN (automated browser uses simulated devices). No deployment was performed.
+
+## Shared admin chat
+
+The existing `/admin/inbox` route now renders the same `SupportChat` component as the user Inbox, with the same message bubbles, attachment renderer, composer, camera, microphone, progress, cancellation and retry behavior. A compact client list retains search, status filtering, unread counts and client names. The selected conversation ID is retained in `/admin/inbox?conversation=:id` so reload restores the same thread. Assignment and resolution remain in the chat header. On phones the list opens into chat with a Back button. Selecting a different thread unmounts the previous shared chat and stops its streams, recordings and uploads; the request target remains the original conversation even if a save already reached the server.
+
+Staff uploads use `POST /api/v1/admin/inbox/:id/media`, requiring `admin:access`, `inbox:read` and `inbox:manage`. Staged uploads are scoped to the uploader and target conversation. A file uploaded for one conversation cannot be bound to another, and files uploaded through the personal account endpoint cannot bypass this staff scope. Message and file publication still use the existing atomic transaction and stable retry IDs.
+
+Private reads of sent files authorize against the actual conversation's owner and current staff Inbox permissions. This allows a client to read received staff attachments and prevents a staff uploader from continuing to read client files after losing Inbox permissions. Staged staff files remain unavailable to recipients until sent. Attachment-only staff replies create ordinary persisted notifications, using the real filename in the preview. Existing text notifications and unread state remain unchanged.
+
+Additional tests: `backend/test/admin-chat.integration.test.mjs` covers client identity/search, scoped uploads, staged privacy, bidirectional private reads, concurrent retries, notification deduplication, assignment/resolution and staff permission revocation. `frontend/test/admin-simple-chat-browser.mjs` checks the rendered admin route, client switching, text/file retries, upload progress/cancel, camera and voice capture, device cleanup on switching, playback in both directions, refresh persistence, assignment/resolution, mobile layout and restricted/read-only staff. Chrome uses simulated devices and a random isolated database, with a local proxy on port 8084. Physical device checks remain NOT RUN. No deployment was performed.
+
+Admin chat validation: PASS backend/frontend lint, typecheck and builds, staff media integration, existing user media and notification integration suites, the new admin Chrome flow, the existing user Chrome regression flow and Nginx configuration syntax. Desktop and phone admin screenshots were inspected (`artifacts/messaging/admin-simple-*.png`). Browser tests exercised real MediaRecorder/camera APIs with simulated devices. One user-regression fixture setup was interrupted by the local MongoDB restarting; the rerun passed. No application account data was used for tests and no deployment was performed.
+
+Private attachments now also require a successful malware scan. Missing, failed or pending scanner results remain quarantined; see [community-moderation.md](community-moderation.md). Existing support history is retained.

@@ -1,3 +1,5 @@
+import {UseGuards} from '@nestjs/common';
+import {CodeAttemptGuard} from './code-attempt.guard';
 import { BadRequestException, Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Req, Res, UseFilters } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
@@ -68,7 +70,7 @@ export class AcademyController {
         };
     }
     @Header('Cache-Control', 'no-store')
-    @Post(':slug/quote')
+    @UseGuards(CodeAttemptGuard) @Post(':slug/quote')
     @Authenticated()
     @HttpCode(200)
     async quote(
@@ -83,7 +85,7 @@ export class AcademyController {
         };
     }
     @Header('Cache-Control', 'no-store')
-    @Post(':slug/scholarship')
+    @UseGuards(CodeAttemptGuard) @Post(':slug/scholarship')
     @Authenticated()
     @HttpCode(200)
     async scholarship(

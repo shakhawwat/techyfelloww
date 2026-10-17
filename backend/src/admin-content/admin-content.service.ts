@@ -1,8 +1,10 @@
+import {parseAcademyVideo} from "../academy/academy-video";
+import {contentDefinitions} from "../content/content.schemas";
 import { MediaService } from "../media/media.service";
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { InjectConnection, InjectModel } from "@nestjs/mongoose";
 import { Connection, Error as MongooseError, Model, Types, type ClientSession } from "mongoose";
-import { hasPermission } from "../auth/permissions";
+import { hasIdentityPermission } from "../auth/permissions";
 import type { AuthIdentity } from "../auth/auth-http";
 import type { ContentKind, ContentRecord } from "../content/content.types";
 import { parseAdminQuery } from "./admin-query";
@@ -14,6 +16,8 @@ export class AdminContentService {
   constructor(
     @InjectConnection() private readonly connection: Connection,
     private readonly media: MediaService,
+    @InjectModel("PageContent") private readonly pages: Model<ContentRecord>,
+    @InjectModel("Product") private readonly products: Model<ContentRecord>,
     @InjectModel("Project") private readonly projects: Model<ContentRecord>,
     @InjectModel("ResearchProject") private readonly research: Model<ContentRecord>,
     @InjectModel("Publication") private readonly publications: Model<ContentRecord>,
@@ -28,13 +32,40 @@ export class AdminContentService {
         writeConcern: { w: "majority" }, maxCommitTimeMS: 1500, timeoutMS: 5000 });
     } finally { await session.endSession(); }
   }
+  private async validateEditorial(kind:ContentKind,document:ContentRecord,session:ClientSession){
+    if(document.videoInput)document.videoInput=parseAcademyVideo(document.videoInput);
+    await this.media.validateReferences(document.media,session,kind);
+    if(kind==='pages'&&document.pageType==='homepage'&&document.slug!=='homepage')throw new BadRequestException({fields:['slug']});
+    if(kind==='pages'&&document.pageType&&document.pageType!=='homepage'&&document.slug!==document.pageType&&!document.slug.startsWith(`${document.pageType}-`))throw new BadRequestException({fields:['slug']});
+    const sections=(document.sections??[]) as {key:string;image?:string;alt?:string}[];
+    if(document.pageType==='homepage'&&sections.some(section=>!['hero','audience','solutions','projects','research','support','consulting','institutional','academy','mentorship-store','mentorship','store','company','inquiry',...Array.from({length:3},(_,i)=>`audience-${i+1}`),...Array.from({length:6},(_,i)=>`solution-${i+1}`),...Array.from({length:3},(_,i)=>`hero-${i+1}`),...Array.from({length:3},(_,i)=>`consulting-${i+1}`),...Array.from({length:13},(_,i)=>`institutional-${i+1}`)].includes(section.key)))throw new BadRequestException({fields:['sections']});
+    if(new Set(sections.map(section=>section.key)).size!==sections.length)throw new BadRequestException({fields:['sections']});
+    for(const section of sections){if(section.image?.startsWith('media:'))await this.media.validateReferences([{reference:section.image.slice(6),type:'image',altText:section.alt??''}],session,kind);}
+    if(kind==='products'){
+      if(document.compareAtMinor!==undefined&&(document.priceMinor===undefined||document.compareAtMinor<=document.priceMinor))throw new BadRequestException({fields:['compareAtMinor']});
+      if(document.categorySlug&&!await this.connection.collection('store_categories').findOne({slug:document.categorySlug},{session}))throw new BadRequestException({fields:['categorySlug']});
+      if(document.orderable&&(!document.sku||!document.categorySlug||!Number.isSafeInteger(document.priceMinor)||document.priceMinor!<=0||document.priceMinor!>10000000000||!Number.isSafeInteger(document.stockQuantity)))throw new BadRequestException({fields:['sku','categorySlug','priceMinor','stockQuantity']});
+      if(document.importProvenance&&document.orderable)throw new BadRequestException({fields:['orderable']});
+    }
+    if(document.status!=='published')return;
+    if(document.importProvenance&&!document.reviewedForPublication)throw new BadRequestException({fields:["reviewedForPublication"]});
+    if(kind==='pages'){
+      const targets={solutions:['solutions','solutions-robotics','solutions-iot-embedded','solutions-ai-vision','solutions-automation','solutions-prototyping'],consulting:['consulting','consulting-capstone','consulting-research','consulting-startup'],institutional:['institutional','institutional-schools','institutional-universities','institutional-industry'],homepage:['homepage'],about:['about'],contact:['contact'],academy:['academy'],company:['company'],projects:['projects'],research:['research'],publications:['publications'],team:['team'],store:['store']};
+      if(!document.pageType||!targets[document.pageType].includes(document.slug)&&!(document.pageType==='institutional'&&document.slug.startsWith('institutional-program-')))throw new BadRequestException({fields:['slug']});
+    }
+    if(document.metrics?.some(metric=>metric.verified&&metric.year>new Date().getUTCFullYear()))throw new BadRequestException({fields:['metrics']});
+    const references=[...((document.featured??[]) as {kind:ContentKind;slug:string}[]),...((document.mentorSlugs??[]) as string[]).map(slug=>({kind:'team' as const,slug}))];
+    if(kind==='research')for(const person of document.contributors??[])if(person.teamSlug)references.push({kind:'team',slug:person.teamSlug});
+    if(kind==='products'&&document.relatedCourse)references.push({kind:'courses',slug:String(document.relatedCourse)});
+    for(const ref of references){if(!contentDefinitions[ref.kind]||!await this.model(ref.kind).exists({slug:ref.slug,status:'published',publishedAt:{$lte:new Date()}}).session(session))throw new BadRequestException({fields:['featured']});}
+  }
   private model(kind: ContentKind) { return this[kind]; }
   private id(value: string): Types.ObjectId {
     if (!/^[a-fA-F0-9]{24}$/.test(value)) throw new BadRequestException({ fields: ["id"] });
     return new Types.ObjectId(value);
   }
   private authorize(kind: ContentKind, actor: AuthIdentity, action: "read" | "edit" | "publish"): void {
-    if (!hasPermission(actor.role, `${kind}:${action}`)) throw new ForbiddenException();
+    if (!hasIdentityPermission(actor, `${kind}:${action}`)) throw new ForbiddenException();
   }
   private failure(error: unknown): never {
     if (error instanceof HttpException) throw error;
@@ -71,7 +102,7 @@ export class AdminContentService {
     try {
       return await this.transaction(async session => {
         const document = new (this.model(kind))({ ...changes, status: "draft", revision: 1 });
-        if (kind === "projects") await this.media.validateReferences(document.media, session);
+        await this.validateEditorial(kind,document,session);
         await document.save({ session });
         await this.audits.create([{ actor: new Types.ObjectId(actor.id), action: "create", resource: kind, contentId: document._id, revision: 1 }], { session });
         return { data: toAdminDto(kind, document.toObject()) };
@@ -116,7 +147,8 @@ export class AdminContentService {
         // Validate the complete candidate, including publication-only requirements, before writing.
         await document.validate();
         if(beforeWrite)await beforeWrite(document,session);
-        if (kind === "projects" && (action === "edit" || action === "publish")) await this.media.validateReferences(document.media, session);
+        if(action==="edit"||action==="publish")await this.validateEditorial(kind,document,session);
+        if(document.videoInput)set.videoInput=document.videoInput;
         const precondition = expected === 1 ? { $or: [{ revision: expected }, { revision: { $exists: false } }] } : { revision: expected };
         const updated = await this.model(kind).findOneAndUpdate({ _id: id, ...precondition },
           { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) }, { session, new: true })

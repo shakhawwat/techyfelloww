@@ -1,23 +1,123 @@
 'use client';
-import { useEffect, useState, type FormEvent } from 'react';
+import {isGeneratedScholarshipCode} from '@/lib/admin/scholarships';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ResourceGate, useAdmin } from './session';
-import {AcademyCodeGenerator} from './academy-code-generator';
 import { Button } from '@/components/ui/button';
-import { formatAcademyMoney } from '@/lib/academy/pricing';
 import styles from './academy-access.module.css';
-type Code={_id:string;label:string;courses:string[];kind:string;amount?:number;amountMinor?:number;minimumSpendMinor?:number;startsAt:string;expiresAt?:string;totalLimit:number;perAccountLimit:number;recipientEmail?:string;active:boolean;redeemed:number;revision:number};
-const blank={enabled:false,currency:'BDT',accessTerms:'',benefits:[],outcomes:[],modules:[],revision:0};
-function bdtMinor(value:string){if(!/^(0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value))throw new Error('Use a nonnegative BDT amount with at most two decimal places.');const [major,fraction='']=value.split('.');const amount=Number(major)*100+Number(fraction.padEnd(2,'0'));if(!Number.isSafeInteger(amount))throw new Error('Amount is too large.');return amount;}
-export function AcademyAccessAdmin(){const {call}=useAdmin(),[courseSlug,setCourseSlug]=useState(''),[config,setConfig]=useState(JSON.stringify(blank,null,2)),[codes,setCodes]=useState<Code[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[editing,setEditing]=useState<Code|null>(null),[version,setVersion]=useState(0);
- useEffect(()=>{let active=true;call<{data:Code[]}>('/admin/academy/scholarships').then(result=>{if(active)setCodes(result.data);}).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:'Scholarship data unavailable.');});return()=>{active=false;};},[call,version]);
- async function action(work:()=>Promise<unknown>,message:string){if(busy)return;setBusy(true);setError('');setNotice('');try{await work();setNotice(message);setVersion(value=>value+1);}catch(cause){setError(cause instanceof Error?cause.message:'Changes could not be confirmed.');}finally{setBusy(false);}}
- async function load(){await action(async()=>{const result=await call<{data:unknown}>(`/admin/academy/courses/${encodeURIComponent(courseSlug)}`);setConfig(JSON.stringify(result.data??blank,null,2));},'Access configuration loaded.');}
- async function saveCode(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=event.currentTarget,data=new FormData(form);await action(async()=>{const body={code:String(data.get('code')),label:String(data.get('label')),courses:String(data.get('courses')).split(',').map(s=>s.trim()).filter(Boolean),kind:String(data.get('kind')),...(String(data.get('kind'))==='fixed'?{amountMinor:bdtMinor(String(data.get('amount')))}:{amount:Number(data.get('amount'))}),startsAt:new Date(String(data.get('startsAt'))).toISOString(),expiresAt:new Date(String(data.get('expiresAt'))).toISOString(),totalLimit:Number(data.get('totalLimit')),perAccountLimit:Number(data.get('perAccountLimit')),...(String(data.get('recipientEmail')).trim()?{recipientEmail:String(data.get('recipientEmail')).trim()}:{}),minimumSpendMinor:bdtMinor(String(data.get('minimumSpend'))),active:data.get('active')==='on',revision:editing?.revision??0};await call(`/admin/academy/scholarships${editing?`/${editing._id}`:''}`,editing?'PATCH':'POST',body);setEditing(null);form.reset();},'Scholarship saved. Raw codes are not stored or returned.');}
- let courseConfig:Record<string,unknown>={};try{courseConfig=JSON.parse(config);}catch{}
- async function savePricing(event:FormEvent<HTMLFormElement>){event.preventDefault();const data=new FormData(event.currentTarget);await action(async()=>{const regular=String(data.get('regular')).trim(),sale=String(data.get('sale')).trim(),start=String(data.get('start')),end=String(data.get('end'));const body={currency:'BDT',revision:courseConfig.revision??0,...(regular?{regularPriceMinor:bdtMinor(regular)}:{}),...(sale?{salePriceMinor:bdtMinor(sale)}:{}),...(start?{saleStartsAt:new Date(start).toISOString()}:{}),...(end?{saleEndsAt:new Date(end).toISOString()}:{})};await call(`/admin/academy/courses/${encodeURIComponent(courseSlug)}/pricing`,'PATCH',body);const result=await call<{data:unknown}>(`/admin/academy/courses/${encodeURIComponent(courseSlug)}`);setConfig(JSON.stringify(result.data,null,2));},'Approved course pricing saved.');}
- const datetime=(value?:string)=>{if(!value)return '';const date=new Date(value);return new Date(+date-date.getTimezoneOffset()*60000).toISOString().slice(0,16);};
- return <ResourceGate resource="courses" edit><div className={styles.page}><h1>Academy access & scholarships</h1><p>Published courses only. Reuses existing admin permissions and account sessions. Checkout is unavailable; no payment provider is configured.</p>{error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}<section><h2>Course access configuration</h2><label>Published course slug<input value={courseSlug} pattern="[a-z0-9]+(-[a-z0-9]+)*" onChange={event=>setCourseSlug(event.target.value)}/></label><Button disabled={busy||!courseSlug} onClick={()=>void load()}>Load configuration</Button><h3>Approved BDT pricing</h3><p>Leave regular price blank for “Price to be confirmed”. Enter 0 only for an explicitly approved free course. Sales and codes never stack; the better single discount applies.</p><form key={`${courseSlug}-${courseConfig.revision}`} onSubmit={event=>void savePricing(event)} className={styles.grid}><label>Regular price (BDT)<input name="regular" type="number" min="0" max="10000000" step="0.01" defaultValue={typeof courseConfig.regularPriceMinor==='number'?courseConfig.regularPriceMinor/100:undefined}/></label><label>Sale price (BDT, optional)<input name="sale" type="number" min="0" max="10000000" step="0.01" defaultValue={typeof courseConfig.salePriceMinor==='number'?courseConfig.salePriceMinor/100:undefined}/></label><label>Sale start (local time, optional)<input name="start" type="datetime-local" defaultValue={typeof courseConfig.saleStartsAt==='string'?datetime(courseConfig.saleStartsAt):undefined}/></label><label>Sale end (local time, optional)<input name="end" type="datetime-local" defaultValue={typeof courseConfig.saleEndsAt==='string'?datetime(courseConfig.saleEndsAt):undefined}/></label><Button disabled={busy||!courseSlug}>Save approved pricing</Button></form><form key={`purchase-${courseConfig.revision}`} onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);void action(async()=>{await call(`/admin/academy/courses/${encodeURIComponent(courseSlug)}/purchase-availability`,'PATCH',{purchaseEnabled:data.get('purchaseEnabled')==='on',revision:courseConfig.revision??0});const result=await call<{data:unknown}>(`/admin/academy/courses/${encodeURIComponent(courseSlug)}`);setConfig(JSON.stringify(result.data,null,2));},'Purchase availability saved.');}}><label><input type="checkbox" name="purchaseEnabled" defaultChecked={courseConfig.purchaseEnabled===true}/> Enable purchase (requires complete supplied lessons and media)</label><Button disabled={busy||!courseSlug}>Save purchase availability</Button></form><label>Configuration JSON<textarea rows={15} value={config} onChange={event=>setConfig(event.target.value)}/></label><p>Set actual access terms; JSON monetary fields regularPriceMinor and salePriceMinor are integer paisa (BDT × 100), with optional saleStartsAt and saleEndsAt ISO dates. Legacy whole-BDT fields remain readable; new writes store minor units. Use modules → lessons with a stable unique id, title, description, type (text/video), access, supplied text or private file key, and resources. Only the first introductory lesson may use public access; every later lesson requires enrolled access. Omit a video file key when media is missing; it will show Video not supplied. Optional durationSeconds must be known. Optional thumbnail uses src and alt fields from the existing Academy assets: /banner/iot_banner.jpg, /banner/esp32Bannetr.jpg, /banner/aibanner3.jpg, /banner/academy_2.jpg or /banner/b2.jpg. Preview video may be an approved YouTube embed. Restricted files belong outside public web directories under ACADEMY_MEDIA_ROOT.</p><Button disabled={busy||!courseSlug} onClick={()=>void action(()=>call(`/admin/academy/courses/${encodeURIComponent(courseSlug)}`,'POST',JSON.parse(config)),'Saved. Reload configuration before editing again.')}>Save access configuration</Button><details><summary>Lesson configuration example (structure only)</summary><pre>{JSON.stringify({id:'module-id',title:'Actual module title',lessons:[{id:'lesson-id',title:'Actual lesson title',description:'Actual supplied topic description',type:'text',access:'enrolled',text:'Supplied lesson content',resources:[]}]},null,2)}</pre></details></section>
- <section><h2>Grant or revoke enrollment</h2><form onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);void action(()=>call(`/admin/academy/courses/${encodeURIComponent(courseSlug)}/enrollment`,'POST',{userId:String(data.get('userId')),active:data.get('active')==='on',reason:String(data.get('reason'))}),'Enrollment updated.');}}><label>Reason for grant or revocation<textarea name="reason" required maxLength={2000}/></label><label>Existing account ID<input name="userId" required pattern="[a-f0-9]{24}"/></label><label><input type="checkbox" name="active" defaultChecked/> Grant active access (uncheck to revoke)</label><Button disabled={busy||!courseSlug}>Update enrollment</Button></form></section>
- <AcademyCodeGenerator onGenerated={()=>setVersion(value=>value+1)}/><section><h2>{editing?'Edit scholarship':'Create scholarship'}</h2><form key={editing?._id??'new'} onSubmit={event=>void saveCode(event)} className={styles.grid}><label>Code (8–64 letters, numbers or hyphens)<input name="code" required minLength={8} maxLength={64} autoComplete="off" pattern="[A-Za-z0-9-]{8,64}"/></label><label>Admin label<input name="label" defaultValue={editing?.label} required maxLength={160}/></label><label>Eligible course slugs (comma separated)<input name="courses" defaultValue={editing?.courses.join(', ')} required/></label><label>Discount type<select name="kind" defaultValue={editing?.kind??'full'}><option value="full">Full 100% scholarship</option><option value="percentage">Percentage discount</option><option value="fixed">Fixed BDT discount</option></select></label><label>Amount (BDT for fixed; percent for percentage; 0 for full)<input type="number" name="amount" min={0} max={10000000} step="0.01" defaultValue={editing?.kind==='fixed'?(editing.amountMinor!==undefined?editing.amountMinor/100:editing.amount):editing?.amount??0} required/></label><label>Minimum spend (BDT, current sale price)<input type="number" name="minimumSpend" min={0} step="0.01" defaultValue={(editing?.minimumSpendMinor??0)/100} required/></label><label>Starts at (local time)<input type="datetime-local" name="startsAt" defaultValue={editing?datetime(editing.startsAt):undefined} required/></label><label>Expires at (local time)<input type="datetime-local" name="expiresAt" defaultValue={editing?datetime(editing.expiresAt):undefined} required/></label><label>Total redemption limit<input type="number" name="totalLimit" min={1} defaultValue={editing?.totalLimit??1} required/></label><label>Per-account limit<input type="number" name="perAccountLimit" min={1} defaultValue={editing?.perAccountLimit??1} required/></label><label>Optional recipient email<input type="email" name="recipientEmail" defaultValue={editing?.recipientEmail}/></label><label><input type="checkbox" name="active" defaultChecked={editing?.active??true}/> Active</label><Button type="submit" disabled={busy}>Save scholarship</Button>{editing&&<Button type="button" onClick={()=>setEditing(null)}>Cancel edit</Button>}</form><p>Keep the raw code securely: it is stored only as a hash. Supply the same code when editing. Applying a partial discount does not redeem it or create enrollment.</p></section>
- <section><h2>Scholarships (latest 100)</h2><ul>{codes.map(item=><li key={item._id}><strong>{item.label}</strong><p>{item.kind==='full'?'100% scholarship':`${item.kind==='percentage'?`${item.amount}%`:formatAcademyMoney(item.amountMinor??(item.amount??0)*100)} discount`} · {item.active?'Active':'Revoked'} · {item.redeemed}/{item.totalLimit} redeemed · Courses: {item.courses.length?item.courses.join(', '):'Any purchasable course (one selected course per redemption)'}</p><Button disabled={busy} onClick={()=>setEditing(item)}>Edit</Button><Button disabled={busy} onClick={()=>void action(()=>call(`/admin/academy/scholarships/${item._id}/state`,'POST',{active:!item.active}),'Scholarship state updated.')}>{item.active?'Revoke':'Activate'}</Button></li>)}</ul></section></div></ResourceGate>;
+
+type Code = { _id: string; label: string; kind: string; amount?: number; recipientEmail?: string; active: boolean; redeemed: number; totalLimit: number; startsAt: string; expiresAt?: string };
+type Options = { label: string; courses: string[]; anyCourse: boolean; kind: 'full' | 'percentage'; amount: number; totalLimit: number; perAccountLimit: number; recipientEmail?: string; expiresAt?: string };
+type Generated = { id: string; code: string; percentage: number };
+const percentageOf = (code: Code) => code.kind === 'full' ? '100%' : code.kind === 'percentage' ? `${code.amount}%` : 'Fixed discount';
+function statusOf(code: Code, now: number) {
+  if (!code.active) return 'Revoked';
+  if (code.expiresAt && Date.parse(code.expiresAt) <= now) return 'Expired';
+  if (code.redeemed >= code.totalLimit) return 'Used';
+  if (Date.parse(code.startsAt) > now) return 'Scheduled';
+  return 'Active';
+}
+export function AcademyAccessAdmin() {
+  return <ResourceGate resource="courses" edit><ScholarshipAccess /></ResourceGate>;
+}
+function ScholarshipAccess() {
+  const { call } = useAdmin();
+  const codeId = useId();
+  const [percentage, setPercentage] = useState('100');
+  const [recipient, setRecipient] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [limit, setLimit] = useState('1');
+  const [accountLimit, setAccountLimit] = useState('1');
+  const [codes, setCodes] = useState<Code[] | null>(null);
+  const [listError, setListError] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [saved, setSaved] = useState<Generated | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+  const [checkedAt, setCheckedAt] = useState(0);
+  const pending = useRef(false);
+  const request = useRef<{ key: string; options: Options; percentage: number } | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  useEffect(() => {
+    let active = true;
+    call<{ data: Code[] }>('/admin/academy/scholarships').then(result => {
+      if (!Array.isArray(result.data)) throw new Error('The saved code list could not be verified.');
+      if (active) { setCodes(result.data); setListError(''); setCheckedAt(Date.now()); }
+    }).catch(cause => { if (active) { setCodes(null); setListError(cause instanceof Error ? cause.message : 'Saved codes could not be loaded.'); } });
+    return () => { active = false; };
+  }, [call, version]);
+  async function generate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending.current) return;
+    setError(''); setNotice('');
+    try {
+      if (!request.current) {
+        const value = Number(percentage), total = Number(limit), perAccount = Number(accountLimit);
+        if (!/^\d+$/.test(percentage) || !Number.isInteger(value) || value < 1 || value > 100) throw new Error('Enter a whole scholarship percentage from 1 to 100.');
+        if (!/^\d+$/.test(limit) || !/^\d+$/.test(accountLimit) || !Number.isSafeInteger(total) || !Number.isSafeInteger(perAccount) || perAccount < 1 || total < perAccount) throw new Error('Usage limits must be positive whole numbers. The per-account limit cannot exceed the total.');
+        const recipientValue = recipient.trim();
+        const namedEmail = recipientValue.match(/^([^<>]+)\s*<([^<>]+)>$/);
+        const email = (namedEmail ? namedEmail[2] : recipientValue).trim().toLowerCase();
+        const name = namedEmail?.[1].trim();
+        if (recipientValue && (email.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))) throw new Error('Use an email or Name <email> to restrict redemption to a verified account.');
+        if (name && name.length > 149) throw new Error('Use a recipient name of at most 149 characters.');
+        const date = expiry ? new Date(expiry) : undefined;
+        if (date && (!Number.isFinite(+date) || +date <= Date.now())) throw new Error('Choose an expiry in the future, or leave it blank.');
+        const options: Options = { label: name ? `Recipient: ${name}` : `${value}% Academy scholarship`, courses: [], anyCourse: true, kind: value === 100 ? 'full' : 'percentage', amount: value === 100 ? 0 : value, totalLimit: total, perAccountLimit: perAccount, ...(email ? { recipientEmail: email } : {}), ...(date ? { expiresAt: date.toISOString() } : {}) };
+        request.current = { key: crypto.randomUUID(), options, percentage: value };
+      }
+      pending.current = true; setBusy(true); setSaved(null);
+      const submitted = request.current;
+      const result = await call<{ data: { codes: { id: string; code: string }[]; plaintextUnavailable?: boolean; ids?: string[] } }>('/admin/academy/scholarships/generate', 'POST', { ...submitted.options, idempotencyKey: submitted.key });
+      const generated = result.data.codes?.[0];
+      if (generated && /^[a-f0-9]{24}$/.test(generated.id) && isGeneratedScholarshipCode(generated.code)) {
+        setSaved({ ...generated, percentage: submitted.percentage }); setNotice('Scholarship saved. Copy the code now.');
+      } else if (result.data.plaintextUnavailable && result.data.ids?.length) {
+        setNotice(`Saved code ${result.data.ids[0]}. The copy window has ended. Revoke this code before generating a replacement.`);
+      } else throw new Error('The generated code response could not be verified. Retry the same request.');
+      request.current = null; setRetrying(false); setVersion(value => value + 1);
+    } catch (cause) {
+      setRetrying(request.current !== null);
+      setError(cause instanceof Error ? cause.message : 'Generation could not be confirmed. Retry the same request.');
+    } finally { pending.current = false; setBusy(false); }
+  }
+  async function copy() {
+    if (!saved) return;
+    try { await navigator.clipboard.writeText(saved.code); setNotice('Code copied.'); }
+    catch { setNotice('Clipboard unavailable. Select and copy the code below.'); }
+  }
+  async function revoke(id: string) {
+    if (revoking) return;
+    setRevoking(id); setError(''); setNotice('');
+    try { await call(`/admin/academy/scholarships/${id}/state`, 'POST', { active: false }); if (saved?.id === id) setSaved(null); setNotice('Scholarship revoked.'); setVersion(value => value + 1); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Revocation could not be confirmed.'); }
+    finally { setRevoking(null); }
+  }
+  return <div className={styles.page}>
+    <div className="admin-page-heading"><div><h1>Scholarship codes</h1><p>Let the recipient choose one eligible Academy course.</p></div></div>
+    <form className={styles.generator} onSubmit={event => void generate(event)} aria-busy={busy}>
+      <fieldset disabled={busy || retrying}>
+        <div className={styles.grid}>
+          <label>Scholarship percentage (%)<input type="number" min={1} max={100} step={1} required value={percentage} onChange={event => setPercentage(event.target.value)} /></label>
+          <label>Recipient (optional name/email)<input value={recipient} maxLength={410} placeholder="Email or Name <email>" autoComplete="off" onChange={event => setRecipient(event.target.value)} /></label>
+        </div>
+        <p>Leave recipient blank for anyone with the code. A recipient email requires that account’s verified email.</p>
+        <details><summary>Advanced settings (optional)</summary><div className={styles.grid}>
+          <label>Expiry (optional, local time)<input type="datetime-local" value={expiry} onChange={event => setExpiry(event.target.value)} /></label>
+          <label>Total successful redemptions<input type="number" min={1} step={1} required value={limit} onChange={event => setLimit(event.target.value)} /></label>
+          <label>Successful redemptions per account<input type="number" min={1} step={1} required value={accountLimit} onChange={event => setAccountLimit(event.target.value)} /></label>
+        </div></details>
+      </fieldset>
+      <Button type="submit" loading={busy} loadingLabel="Generating…">Generate scholarship code</Button>
+      {retrying && <p>Generation was not confirmed. This button retries the same request safely; options stay locked until it is resolved.</p>}
+    </form>
+    {error && <p className="admin-alert" role="alert">{error}</p>}
+    {notice && <p className="admin-success" role="status">{notice}</p>}
+    {saved && <section className={styles.generated} aria-label="Saved scholarship code"><strong>{saved.percentage}% scholarship</strong><label htmlFor={codeId}>New code<input id={codeId} readOnly value={saved.code} autoComplete="off" spellCheck={false} /></label><Button variant="secondary" onClick={() => void copy()}>Copy</Button></section>}
+    <p>100% scholarships confirm a zero-total order and course enrollment. Partial scholarships require verified payment of the remaining balance. Applying a code alone never grants access.</p>
+    <section><h2>Saved codes</h2><p>Latest 100 codes. Plaintext codes are not shown in this list.</p>
+      {listError ? <div role="alert"><p>{listError}</p><Button variant="secondary" onClick={() => setVersion(value => value + 1)}>Retry list</Button></div> : codes === null ? <p role="status">Loading saved codes…</p> : !codes.length ? <p>No scholarship codes yet.</p> : <div className={styles.tableScroll}><table><thead><tr><th scope="col">Code identifier</th><th scope="col">Scholarship %</th><th scope="col">Recipient/Anyone</th><th scope="col">Status</th><th scope="col">Revoke</th></tr></thead><tbody>{codes.map(code => <tr key={code._id}><td>{code._id}</td><td>{percentageOf(code)}</td><td>{code.recipientEmail ? <>{code.label.startsWith('Recipient: ') && <span>{code.label.slice(11)}<br /></span>}{code.recipientEmail}</> : 'Anyone'}</td><td>{statusOf(code, checkedAt)}</td><td><Button variant="secondary" disabled={!!revoking || !code.active} aria-label={`Revoke code ${code._id}`} onClick={() => void revoke(code._id)}>{revoking === code._id ? 'Revoking…' : 'Revoke'}</Button></td></tr>)}</tbody></table></div>}
+    </section>
+  </div>;
 }

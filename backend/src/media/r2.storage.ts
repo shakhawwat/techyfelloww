@@ -15,14 +15,14 @@ export class R2Storage implements OnModuleDestroy {
   }
   async put(key: string, body: Buffer, mimeType: string): Promise<void> {
     try { await this.sdk().send(new PutObjectCommand({ Bucket: this.config.getOrThrow<string>('R2_BUCKET'), Key: key, Body: body, ContentType: mimeType,
-      ContentLength: body.length, CacheControl: 'public,max-age=31536000,immutable' }), { abortSignal: AbortSignal.timeout(15000) }); }
+      ContentLength: body.length,...(!mimeType.startsWith('image/')?{ContentDisposition:'attachment'}:{}), CacheControl: 'public,max-age=31536000,immutable' }), { abortSignal: AbortSignal.timeout(15000) }); }
     catch { throw new ServiceUnavailableException(); }
   }
   async removeFailed(key: string): Promise<void> {
-    if (!/^techyfellow\/media\/[a-f0-9]{32}\.(jpg|png|webp)$/.test(key)) throw new ServiceUnavailableException();
+    if (!/^techyfellow\/media\/[a-f0-9]{32}\.(jpg|png|webp|pdf|txt)$/.test(key)) throw new ServiceUnavailableException();
     try { await this.sdk().send(new DeleteObjectCommand({ Bucket: this.config.getOrThrow<string>('R2_BUCKET'), Key: key }), { abortSignal: AbortSignal.timeout(15000) }); }
     catch { throw new ServiceUnavailableException(); }
   }
-  url(key: string): string | undefined { const base = this.config.get<string>('MEDIA_PUBLIC_BASE_URL'); return base && /^techyfellow\/media\/[a-f0-9]{32}\.(jpg|png|webp)$/.test(key) ? `${base}/${key}` : undefined; }
+  url(key: string): string | undefined { const base = this.config.get<string>('MEDIA_PUBLIC_BASE_URL'); return base && /^techyfellow\/media\/[a-f0-9]{32}\.(jpg|png|webp|pdf|txt)$/.test(key) ? `${base}/${key}` : undefined; }
   onModuleDestroy(): void { this.client?.destroy(); }
 }

@@ -1,3 +1,4 @@
+import {generateScholarshipCode} from './scholarship-code';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, HttpException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -51,6 +52,7 @@ export class AcademyService {
     private async adminCourse(courseSlug:string,session?:ClientSession){slug(courseSlug);const course=await this.courses.findOne({slug:courseSlug}).session(session??null).lean();if(!course)throw new NotFoundException();return course;}
     async contentReadiness(config:LearningCourse|null|undefined){return this.purchaseAvailability(config?{...config,purchaseEnabled:true}:config);}
     private async settings(courseSlug: string, session?: ClientSession) {
+        if(await this.courses.exists({slug:courseSlug,"importProvenance.source":"frontend-demo"}).session(session??null))throw new ForbiddenException("Imported illustrative courses are not enrollable.");
         const settings = await this.learning.findOne({
             slug: courseSlug, enabled: true
         }).session(session ?? null).lean();
@@ -86,7 +88,8 @@ export class AcademyService {
     async pricing(courseSlug: string) {
         const approved = approvedPreviewPrices.find(course => course.slug === courseSlug);
         if (!approved) await this.course(courseSlug);
-        const stored = await this.learning.findOne({ slug: courseSlug }).lean();
+        const published=await this.courses.exists({slug:courseSlug,status:"published",publishedAt:{$lte:new Date()}});
+        const stored = published?await this.learning.findOne({ slug: courseSlug }).lean():undefined;
         return coursePricing(stored ?? (approved ? { currency: 'BDT', regularPriceMinor: approved.regularPriceMinor, salePriceMinor: approved.salePriceMinor } : undefined));
     }
     async savePricing(courseSlug: string, raw: unknown, actor: AuthIdentity) {
@@ -360,8 +363,9 @@ export class AcademyService {
             };
     }
     private async purchaseAvailability(config:LearningCourse|null|undefined) {
-        const base={eligible:false,paymentAvailable:this.payments.available,reason:'Course purchase is not enabled.'};
+        const base={eligible:false,paymentAvailable:false,reason:'Course purchase is not enabled.'};
         if(!config?.enabled||!config.purchaseEnabled)return base;
+        if(await this.courses.exists({slug:config.slug,"importProvenance.source":"frontend-demo"}))return {...base,reason:"Imported illustrative course. Purchases and enrollment remain unavailable."};
         if(coursePricing(config).state==='unconfigured')return {...base,reason:'Course price is not configured.'};
         const lessons=config.modules.flatMap(module=>module.lessons);
         if(!lessons.length)return {...base,reason:'Only syllabus placeholders are available. This course cannot be purchased.'};
@@ -371,17 +375,18 @@ export class AcademyService {
             if(lesson.type==='text'&&!lesson.text?.trim())return {...base,reason:'Course lesson content is incomplete.'};
             for(const resource of lesson.resources){try{await this.privateFile(resource.file);}catch{return {...base,reason:'Course resources are incomplete.'};}}
         }
-        return {eligible:true,paymentAvailable:this.payments.available,reason:this.payments.available?'Checkout is available.':'Paid checkout is blocked: no payment provider is configured.'};
+        return {eligible:true,paymentAvailable:false,reason:'Scholarship checkout is available. Orders with a balance remain pending.'};
     }
     async commerceSummary(courseSlug:string,user?:AuthIdentity){
         slug(courseSlug);
         const preview=approvedPreviewPrices.find(course=>course.slug===courseSlug);
         const pricing=await this.pricing(courseSlug);
-        const quote=pricing.state==='unconfigured'?null:{currency:'BDT' as const,subtotalMinor:pricing.subtotalMinor!,discountMinor:pricing.discountMinor!,finalMinor:pricing.finalMinor!,stackingRule:pricing.stackingRule,appliedDiscount:pricing.saleActive?'sale':'none',paymentAvailable:this.payments.available};
-        if(preview)return {course:{slug:courseSlug,title:preview.title,illustrative:true},pricing,quote,enrolled:false,canApplyCode:false,commerce:{eligible:false,paymentAvailable:false,reason:'Course material is illustrative. This course cannot be purchased.'}};
+        const quote=pricing.state==='unconfigured'?null:{currency:'BDT' as const,subtotalMinor:pricing.subtotalMinor!,discountMinor:pricing.discountMinor!,finalMinor:pricing.finalMinor!,stackingRule:pricing.stackingRule,appliedDiscount:pricing.saleActive?'sale':'none',paymentAvailable:false};
+        const published=await this.courses.exists({slug:courseSlug,status:"published",publishedAt:{$lte:new Date()}});
+        if(preview&&!published)return {course:{slug:courseSlug,title:preview.title,illustrative:true},pricing,quote,enrolled:false,canApplyCode:false,commerce:{eligible:false,paymentAvailable:false,reason:'Course material is illustrative. This course cannot be purchased.'}};
         const course=await this.course(courseSlug),config=await this.learning.findOne({slug:courseSlug,enabled:true}).lean();
         const enrolled=user?!!await this.enrollments.exists({userId:user.id,courseSlug,active:true}):false;
-        return {course:{slug:courseSlug,title:course.title,illustrative:false},pricing,quote,enrolled,canApplyCode:!!config&&pricing.state!=='unconfigured'&&!enrolled,commerce:await this.purchaseAvailability(config)};
+        return {course:{slug:courseSlug,title:course.title,illustrative:!!course.importProvenance},pricing,quote,enrolled,canApplyCode:!course.importProvenance&&!!config&&pricing.state!=='unconfigured'&&!enrolled,commerce:await this.purchaseAvailability(config)};
     }
     async savePurchaseAvailability(courseSlug:string,raw:unknown,actor:AuthIdentity){
         const o=object(raw,['purchaseEnabled','revision']),purchaseEnabled=flag(o.purchaseEnabled);
@@ -391,13 +396,26 @@ export class AcademyService {
             await this.learning.updateOne({slug:courseSlug,revision:o.revision},{$set:{purchaseEnabled},$inc:{revision:1}},{session});
             await this.audits.create([{actor:actor.id,action:purchaseEnabled?'course_purchase_enable':'course_purchase_disable',target:courseSlug}],{session});return {saved:true,revision:o.revision+1};});
     }
+    private memoCode(code?:Scholarship&{_id?:unknown}) {return code?{scholarshipPercentage:code.kind==='full'?100:code.kind==='percentage'?code.amount:undefined,codeReference:`SCH-••••${String(code._id).slice(-6)}`} : {};}
+    private async memoSnapshot(user:AuthIdentity,session:ClientSession) {
+        const member=await this.db.collection('users').findOne({_id:new (await import('mongoose')).Types.ObjectId(user.id),enabled:true},{session,projection:{name:1,email:1}});
+        if(!member)throw new ForbiddenException();
+        return {checkoutMode:'scholarship' as const,learnerName:String(member.name??''),learnerEmail:String(member.email)};
+    }
+    async orderMemo(id:string,user:AuthIdentity,admin=false){
+        this.orderId(id);
+        const order=await this.orders.findOne({_id:id,...(admin?{}:{userId:user.id})}).lean();if(!order)throw new NotFoundException();
+        const dto=await this.orderDto(order);
+        return {...dto,number:`TF-${id.toUpperCase()}`,learner:{name:order.learnerName??'',email:order.learnerEmail??''},memoStatus:order.status==='scholarship'?'Confirmed through scholarship':order.status==='free'?'Confirmed — free course':order.status==='pending'?'Pending — balance outstanding':order.status.replaceAll('_',' '),items:dto.items.map((item,index)=>({...item,...this.memoFields((order.items??[order])[index])}))};
+    }
+    private memoFields(item:{scholarshipPercentage?:number;codeReference?:string}){return {scholarshipPercentage:item.scholarshipPercentage,codeReference:item.codeReference};}
     private async orderDto(order:AcademyOrder&{_id?:unknown},session?:ClientSession){
         const completed=['paid','free','scholarship'].includes(order.status),items=[];
         for(const item of order.items??[{courseSlug:order.courseSlug,courseTitle:order.courseTitle,subtotalMinor:order.subtotalMinor,discountMinor:order.discountMinor,finalMinor:order.finalMinor}])items.push({course:{slug:item.courseSlug,title:item.courseTitle},subtotalMinor:item.subtotalMinor,discountMinor:item.discountMinor,finalMinor:item.finalMinor,enrollmentConfirmed:completed&&!!await this.enrollments.exists({userId:order.userId,courseSlug:item.courseSlug,active:true}).session(session??null)});
-        return {id:String(order._id),reference:String(order._id),items,enrollmentConfirmed:items.every(item=>item.enrollmentConfirmed),confirmationEmail:{status:'not_sent' as const},course:{slug:order.courseSlug,title:order.courseTitle},currency:order.currency,subtotalMinor:order.subtotalMinor,discountMinor:order.discountMinor,finalMinor:order.finalMinor,status:order.status,expiresAt:order.expiresAt,createdAt:order.createdAt,checkoutUrl:order.status==='pending'?order.checkoutUrl:undefined,paymentAvailable:this.payments.available};
+        return {id:String(order._id),reference:String(order._id),items,enrollmentConfirmed:items.every(item=>item.enrollmentConfirmed),confirmationEmail:{status:'not_sent' as const},course:{slug:order.courseSlug,title:order.courseTitle},currency:order.currency,subtotalMinor:order.subtotalMinor,discountMinor:order.discountMinor,finalMinor:order.finalMinor,status:order.status,expiresAt:order.expiresAt,createdAt:order.createdAt,checkoutUrl:order.status==='pending'?order.checkoutUrl:undefined,paymentAvailable:false};
     }
     private async startCheckout(order:AcademyOrder&{_id:unknown}){
-        if(order.status!=='pending'||order.providerReference)return order;
+        if(order.checkoutMode==='scholarship'||order.status!=='pending'||order.providerReference)return order;
         try{const checkout=await this.payments.begin({...order,id:String(order._id)}),url=new URL(checkout.checkoutUrl);if(url.protocol!=='https:'||url.username||url.password)throw new ServiceUnavailableException();await this.orders.updateOne({_id:order._id,status:'pending'},{$set:{providerReference:checkout.reference,checkoutUrl:url.href}});}
         catch{await this.transaction(async session=>{const current=await this.orders.findById(order._id).session(session).lean();if(current?.status==='pending')await this.releaseOrder(current,'failed',session);});}
         return (await this.orders.findById(order._id).lean())!;
@@ -420,15 +438,14 @@ export class AcademyService {
             const totals=await this.totals(settings,user,o.code,session),availability=await this.purchaseAvailability(settings);
             if(totals.finalMinor>0&&!availability.eligible)throw new ConflictException('Course content is incomplete or purchases are disabled.');
             await this.touch(courseSlug,session);
-            let status:AcademyOrder['status']=this.payments.available?'pending':'blocked';
+            let status:AcademyOrder['status']='pending';
             if(totals.finalMinor===0){
                 if(totals.scholarship){await this.redeemInSession(courseSlug,user,o.code,session);status='scholarship';}
                 else {if(coursePricing(settings).currentPriceMinor!==0)throw new ForbiddenException();const created=await this.enroll(courseSlug,user.id,'free',session);if(created)await this.audits.create([{actor:user.id,action:'free_enrollment',target:courseSlug}],{session});status='free';}
             }
             const expiresAt=new Date(Math.min(Date.now()+15*60*1000,totals.scholarship?.expiresAt?+totals.scholarship.expiresAt:Infinity));
-            const reserve=status==='pending'&&!!totals.scholarship;
-            if(reserve)await this.codes.updateOne({_id:totals.scholarship!._id},{$inc:{revision:1}},{session});
-            const [order]=await this.orders.create([{userId:user.id,courseSlug,courseTitle:course.title,currency:'BDT',subtotalMinor:totals.subtotalMinor,discountMinor:totals.discountMinor,finalMinor:totals.finalMinor,currentPriceMinor:coursePricing(settings).currentPriceMinor,status,idempotencyKey:key,requestHash:hash,codeId:totals.scholarship?String(totals.scholarship._id):undefined,reservationActive:reserve,expiresAt,createdAt:new Date()}],{session});
+            const reserve=false;
+            const [order]=await this.orders.create([{userId:user.id,...await this.memoSnapshot(user,session),...this.memoCode(totals.scholarship),courseSlug,courseTitle:course.title,currency:'BDT',subtotalMinor:totals.subtotalMinor,discountMinor:totals.discountMinor,finalMinor:totals.finalMinor,currentPriceMinor:coursePricing(settings).currentPriceMinor,status,idempotencyKey:key,requestHash:hash,codeId:totals.scholarship?String(totals.scholarship._id):undefined,reservationActive:reserve,expiresAt,createdAt:new Date()}],{session});
             await this.audits.create([{actor:user.id,action:'order_created',target:String(order._id)}],{session});return order.toObject();
         };
         let order:AcademyOrder&{_id:unknown};
@@ -436,13 +453,14 @@ export class AcademyService {
         return this.orderDto(await this.startCheckout(order));
     }
     async listOrders(user:AuthIdentity){const rows=await this.orders.find({userId:user.id}).sort({createdAt:-1}).limit(50).lean();return Promise.all(rows.map(order=>this.getOrder(String(order._id),user)));}
-    async getOrder(id:string,user:AuthIdentity){this.orderId(id);return this.transaction(async session=>{const order=await this.orders.findOne({_id:id,userId:user.id}).session(session).lean();if(!order)throw new NotFoundException();if(order.status==='pending'&&order.expiresAt<=new Date()){await this.releaseOrder(order,'expired',session);order.status='expired';order.reservationActive=false;}return this.orderDto(order,session);});}
+    async getOrder(id:string,user:AuthIdentity){this.orderId(id);return this.transaction(async session=>{const order=await this.orders.findOne({_id:id,userId:user.id}).session(session).lean();if(!order)throw new NotFoundException();if(order.checkoutMode!=='scholarship'&&order.status==='pending'&&order.expiresAt<=new Date()){await this.releaseOrder(order,'expired',session);order.status='expired';order.reservationActive=false;}return this.orderDto(order,session);});}
     async cancelOrder(id:string,user:AuthIdentity,raw:unknown){object(raw,[]);this.orderId(id);return this.transaction(async session=>{const order=await this.orders.findOne({_id:id,userId:user.id}).session(session).lean();if(!order)throw new NotFoundException();if(['paid','scholarship','free','payment_review'].includes(order.status))throw new ConflictException();if(['pending','blocked'].includes(order.status)){await this.releaseOrder(order,'cancelled',session);order.status='cancelled';}return this.orderDto(order,session);});}
-    async refreshPayment(id:string,user:AuthIdentity,raw:unknown){object(raw,[]);this.orderId(id);const order=await this.orders.findOne({_id:id,userId:user.id}).lean();if(!order)throw new NotFoundException();if(!this.payments.available)throw new ServiceUnavailableException();const event=await this.payments.verifyOrder({...order,id});await this.processVerifiedPayment(event);return this.getOrder(id,user);}
+    async refreshPayment(id:string,user:AuthIdentity,raw:unknown){object(raw,[]);this.orderId(id);const order=await this.orders.findOne({_id:id,userId:user.id}).lean();if(!order)throw new NotFoundException();if(order.checkoutMode==='scholarship'||!this.payments.available)throw new ServiceUnavailableException();const event=await this.payments.verifyOrder({...order,id});await this.processVerifiedPayment(event);return this.getOrder(id,user);}
     async processVerifiedPayment(event:VerifiedPayment){
         this.payments.assertVerified(event);
         try{return await this.transaction(async session=>{
             const order=await this.orders.findById(event.orderId).session(session).lean();if(!order)throw new NotFoundException();
+            if(order.checkoutMode==='scholarship')throw new ForbiddenException();
             if(order.currency!==event.currency||order.finalMinor!==event.amountMinor||order.providerReference!==event.reference)throw new ForbiddenException();
             const previous=await this.paymentEvents.findOne({eventId:event.eventId}).session(session).lean();if(previous){if(previous.orderId!==event.orderId||previous.status!==event.status)throw new ConflictException();return {duplicate:true};}
             await this.paymentEvents.create([{eventId:event.eventId,orderId:event.orderId,status:event.status}],{session});
@@ -486,7 +504,7 @@ export class AcademyService {
     }
     async saveConfig(courseSlug: string, raw: unknown, actor: AuthIdentity) {
         const value = learningInput(raw, courseSlug);
-        for(const image of [value.thumbnail,...(value.gallery??[])])if(image?.src.startsWith('media:')){const item=await this.media.detail(image.src.slice(6),actor);if(item.data.resource!=='courses'||item.data.status!=='ready')throw new BadRequestException();}
+        for(const image of [value.thumbnail,...(value.gallery??[])])if(image?.src.startsWith('media:')){const item=await this.media.detail(image.src.slice(6),actor);if(item.data.resource!=='courses'||item.data.status!=='ready'||!item.data.mimeType.startsWith('image/'))throw new BadRequestException();}
         if(value.purchaseEnabled&&!(await this.purchaseAvailability(value)).eligible)throw new BadRequestException();
         return this.transaction(async (session) => {
             await this.adminCourse(courseSlug, session);
@@ -521,27 +539,41 @@ export class AcademyService {
         const input=object(raw,['count','label','courses','anyCourse','kind','amount','amountMinor','startsAt','expiresAt','totalLimit','perAccountLimit','minimumSpendMinor','recipientEmail','idempotencyKey']);
         const {count:requestedCount,idempotencyKey,...settings}=input,count=requestedCount===undefined?1:integer(requestedCount,1,100);
         const key=idempotencyKey===undefined?undefined:text(idempotencyKey,80);if(key&&!/^[a-zA-Z0-9_-]{16,80}$/.test(key))throw new BadRequestException();
-        // Immediate one-code generation retries derive the same unpredictable code using a server-only key.
-        // Hashes are the only stored code representation; list/detail APIs never return plaintext.
+        // Preserve prior idempotency keys, including legacy TF- codes. The new
+        // random nonce is server-only metadata; only normalized code hashes persist.
         if(key&&count!==1)throw new BadRequestException();
         const secret=this.config.get<string>('ACCOUNT_VERIFICATION_KEY');if(key&&(!secret||!/^[a-f0-9]{64}$/.test(secret)))throw new ServiceUnavailableException();
         const generationHash=createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries({...settings,count}).sort(([a],[b])=>a.localeCompare(b))))).digest('hex');
-        const generated=key?[`TF-${createHmac('sha256',Buffer.from(secret!,'hex')).update(JSON.stringify(['academy-scholarship-v1',actor.id,key])).digest('hex').slice(0,48).toUpperCase()}`]:Array.from({length:count},()=>`TF-${randomBytes(24).toString('hex').toUpperCase()}`);
-        const old=key?await this.codes.findOne({generationActor:actor.id,generationKey:key}).select('+generationHash +codeHash').lean():undefined;
-        const prior=(record:NonNullable<typeof old>)=>{if(record.generationHash!==generationHash||record.codeHash!==codeHash(generated[0]))throw new ConflictException();const immediate=record.generatedAt&&Date.now()-+record.generatedAt<=15*60*1000;return {codes:immediate?[{id:String(record._id),code:generated[0]}]:[],ids:[String(record._id)],count:1,retried:true,plaintextUnavailable:!immediate};};
-        if(old)return prior(old);
-        const startsAt=settings.startsAt??new Date().toISOString();settings.anyCourse=settings.anyCourse??(!Array.isArray(settings.courses)||settings.courses.length===0);
-        const values=generated.map(code=>scholarshipInput({...settings,label:settings.label??'100% Academy scholarship',kind:settings.kind??'full',...(settings.kind===undefined||settings.kind==='full'?{amount:settings.amount??0}:{}),startsAt,totalLimit:settings.totalLimit??1,perAccountLimit:settings.perAccountLimit??1,active:true,revision:0,code}));
-        if(values.some(value=>value.expiresAt&&value.expiresAt<=new Date()||value.perAccountLimit>value.totalLimit))throw new BadRequestException();
-        const work=async(session:ClientSession)=>{
-            if(key){const existing=await this.codes.findOne({generationActor:actor.id,generationKey:key}).select('+generationHash +codeHash').session(session).lean();if(existing)return prior(existing);}
-            for(const courseSlug of values[0].courses)await this.course(courseSlug,session);
-            const codes=await this.codes.create(values.map(value=>({...value,...(key?{generationActor:actor.id,generationKey:key,generationHash,generatedAt:new Date()}:{}),redeemed:0,revision:1})),{session,ordered:true});
-            await this.audits.create(codes.map(code=>({actor:actor.id,action:'scholarship_generate',target:String(code._id)})),{session,ordered:true});
-            return {codes:codes.map((code,index)=>({id:String(code._id),code:generated[index]})),count};
+        const fields='+generationHash +codeHash +generationNonce';
+        const prior=(record:Scholarship&{_id:unknown})=>{
+            const recovered=record.generationNonce?generateScholarshipCode(secret,JSON.stringify(['academy-scholarship-v2',actor.id,key,record.generationNonce])):`TF-${createHmac('sha256',Buffer.from(secret!,'hex')).update(JSON.stringify(['academy-scholarship-v1',actor.id,key])).digest('hex').slice(0,48).toUpperCase()}`;
+            if(record.generationHash!==generationHash||record.codeHash!==codeHash(recovered))throw new ConflictException();
+            const immediate=record.generatedAt&&Date.now()-+record.generatedAt<=15*60*1000;
+            return {codes:immediate?[{id:String(record._id),code:recovered}]:[],ids:[String(record._id)],count:1,retried:true,plaintextUnavailable:!immediate};
         };
-        try{return await this.transaction(work);}catch(error){if(!key||(error as {code?:number})?.code!==11000)throw error;const existing=await this.codes.findOne({generationActor:actor.id,generationKey:key}).select('+generationHash +codeHash').lean();if(!existing)throw new ConflictException();return prior(existing);}
+        const old=key?await this.codes.findOne({generationActor:actor.id,generationKey:key}).select(fields).lean():undefined;if(old)return prior(old);
+        const startsAt=settings.startsAt??new Date().toISOString();settings.anyCourse=settings.anyCourse??(!Array.isArray(settings.courses)||settings.courses.length===0);
+        for(let attempt=0;attempt<24;attempt++){
+            const nonce=key?randomBytes(16).toString('hex'):undefined;
+            const generated=Array.from({length:count},()=>generateScholarshipCode(key?secret:undefined,key?JSON.stringify(['academy-scholarship-v2',actor.id,key,nonce]):undefined));
+            const values=generated.map(code=>scholarshipInput({...settings,label:settings.label??'100% Academy scholarship',kind:settings.kind??'full',...(settings.kind===undefined||settings.kind==='full'?{amount:settings.amount??0}:{}),startsAt,totalLimit:settings.totalLimit??1,perAccountLimit:settings.perAccountLimit??1,active:true,revision:0,code}));
+            if(values.some(value=>value.expiresAt&&value.expiresAt<=new Date()||value.perAccountLimit>value.totalLimit))throw new BadRequestException();
+            try{return await this.transaction(async(session:ClientSession)=>{
+                if(key){const existing=await this.codes.findOne({generationActor:actor.id,generationKey:key}).select(fields).session(session).lean();if(existing)return prior(existing);}
+                for(const courseSlug of values[0].courses)await this.course(courseSlug,session);
+                const codes=await this.codes.create(values.map(value=>({...value,...(key?{generationActor:actor.id,generationKey:key,generationHash,generationNonce:nonce,generatedAt:new Date()}:{}),redeemed:0,revision:1})),{session,ordered:true});
+                await this.audits.create(codes.map(code=>({actor:actor.id,action:'scholarship_generate',target:String(code._id)})),{session,ordered:true});
+                return {codes:codes.map((code,index)=>({id:String(code._id),code:generated[index]})),count};
+            });}catch(error){
+                if((error as {code?:number})?.code!==11000)throw error;
+                if(key){const existing=await this.codes.findOne({generationActor:actor.id,generationKey:key}).select(fields).lean();if(existing)return prior(existing);}
+                // A normalized-hash collision rolls back the entire batch. Retry
+                // with fresh entropy; never update or replace the conflicting row.
+            }
+        }
+        throw new ServiceUnavailableException();
     }
+
     private cartIds(raw:unknown){const input=object(raw,['courseSlugs']),ids=strings(input.courseSlugs,50).map(slug);return [...new Set(ids)];}
     async getCart(user:AuthIdentity){const cart=await this.carts.findOne({userId:user.id}).lean();const enrolled=await this.enrollments.distinct('courseSlug',{userId:user.id,active:true});return {courseSlugs:(cart?.courseSlugs??[]).filter(id=>!enrolled.includes(id))};}
     async mergeCart(user:AuthIdentity,raw:unknown){
@@ -563,7 +595,7 @@ export class AcademyService {
             if(item.code!==undefined){if(!user||!summary.canApplyCode)throw new PromoError('PROMO_INELIGIBLE');quote=await this.quote(item.courseSlug,user,{code:item.code});}
             rows.push({...summary,thumbnail,quote});if(!quote)valid=false;else{subtotalMinor+=quote.subtotalMinor;discountMinor+=quote.discountMinor;finalMinor+=quote.finalMinor;}
         }catch(error){if(!(error instanceof HttpException))throw error;valid=false;const row=this.rowFailure(item.courseSlug,error);rows.push({...base??{course:{slug:item.courseSlug,title:'Course unavailable',illustrative:false},enrolled:false,canApplyCode:false},thumbnail,quote:null,error:{code:row.code,message:row.message}});}}
-        return {rows,valid,currency:'BDT',totals:valid?{subtotalMinor,discountMinor,finalMinor}:null,paymentAvailable:this.payments.available};
+        return {rows,valid,currency:'BDT',totals:valid?{subtotalMinor,discountMinor,finalMinor}:null,paymentAvailable:false};
     }
     private async plannedCodeCapacity(items:AcademyOrderItem[],userId:string,session:ClientSession,excludeOrderId?:string){
         const planned=new Map<string,number>();for(const item of items)if(item.codeId)planned.set(item.codeId,(planned.get(item.codeId)??0)+1);
@@ -580,16 +612,12 @@ export class AcademyService {
                 const course=await this.course(item.courseSlug,session),settings=await this.settings(item.courseSlug,session);if(await this.enrollments.exists({userId:user.id,courseSlug:item.courseSlug}).session(session))throw new ConflictException();
                 const totals=await this.totals(settings,user,item.code,session);if(totals.finalMinor>0&&!(await this.purchaseAvailability(settings)).eligible)throw new ConflictException();
                 if(totals.scholarship?.expiresAt&&totals.scholarship.expiresAt<expiresAt)expiresAt=totals.scholarship.expiresAt;
-                lines.push({courseSlug:item.courseSlug,courseTitle:course.title!,subtotalMinor:totals.subtotalMinor,discountMinor:totals.discountMinor,finalMinor:totals.finalMinor,currentPriceMinor:coursePricing(settings).currentPriceMinor!,codeId:totals.scholarship?String(totals.scholarship._id):undefined,reservationActive:false});
+                lines.push({...this.memoCode(totals.scholarship),courseSlug:item.courseSlug,courseTitle:course.title!,subtotalMinor:totals.subtotalMinor,discountMinor:totals.discountMinor,finalMinor:totals.finalMinor,currentPriceMinor:coursePricing(settings).currentPriceMinor!,codeId:totals.scholarship?String(totals.scholarship._id):undefined,reservationActive:false});
             }catch(error){if(error instanceof HttpException)throw this.rowFailure(item.courseSlug,error);throw error;}}
             const subtotalMinor=lines.reduce((sum,item)=>sum+item.subtotalMinor,0),discountMinor=lines.reduce((sum,item)=>sum+item.discountMinor,0),finalMinor=lines.reduce((sum,item)=>sum+item.finalMinor,0);
-            let status:AcademyOrder['status']=this.payments.available?'pending':'blocked';
+            let status:AcademyOrder['status']='pending';
             if(finalMinor===0){for(const [index,item] of items.entries()){try{const line=lines[index];if(line.codeId)await this.redeemInSession(item.courseSlug,user,item.code,session);else{const created=await this.enroll(item.courseSlug,user.id,'free',session);if(created)await this.audits.create([{actor:user.id,action:'free_enrollment',target:item.courseSlug}],{session});}await this.touch(item.courseSlug,session);}catch(error){if(error instanceof HttpException)throw this.rowFailure(item.courseSlug,error);throw error;}}status=lines.some(item=>item.codeId)?'scholarship':'free';}
-            if(status==='pending'){
-                try{await this.plannedCodeCapacity(lines,user.id,session);}catch(error){if(error instanceof HttpException)throw this.rowFailure(lines.find(item=>item.codeId)?.courseSlug??lines[0].courseSlug,error);throw error;}
-                for(const line of lines){await this.touch(line.courseSlug,session);if(line.codeId){await this.codes.updateOne({_id:line.codeId},{$inc:{revision:1}},{session});line.reservationActive=true;}}
-            }
-            const [order]=await this.orders.create([{userId:user.id,courseSlug:lines[0].courseSlug,courseTitle:lines.length===1?lines[0].courseTitle:`Academy order (${lines.length} courses)`,items:lines,currency:'BDT',subtotalMinor,discountMinor,finalMinor,status,idempotencyKey:key,requestHash,expiresAt,reservationActive:false}],{session});
+            const [order]=await this.orders.create([{userId:user.id,...await this.memoSnapshot(user,session),courseSlug:lines[0].courseSlug,courseTitle:lines.length===1?lines[0].courseTitle:`Academy order (${lines.length} courses)`,items:lines,currency:'BDT',subtotalMinor,discountMinor,finalMinor,status,idempotencyKey:key,requestHash,expiresAt,reservationActive:false}],{session});
             if(finalMinor===0)await this.carts.updateOne({userId:user.id},{$pull:{courseSlugs:{$in:lines.map(line=>line.courseSlug)}}},{session});
             await this.audits.create([{actor:user.id,action:'cart_order_created',target:String(order._id)}],{session});return order.toObject();
         };
@@ -625,7 +653,7 @@ export class AcademyService {
             if (id) {
                 if (!/^[a-f0-9]{24}$/.test(id))
                     throw new BadRequestException();
-                const old = await this.codes.findById(id).select('+codeHash +generationActor +generationKey +generationHash +generatedAt').session(session).lean();
+                const old = await this.codes.findById(id).select('+codeHash +generationActor +generationKey +generationHash +generationNonce +generatedAt').session(session).lean();
                 if (!old || old.revision !== value.revision)
                     throw new ConflictException();
                 if (value.codeHash !== old.codeHash || value.totalLimit < old.redeemed)
@@ -633,7 +661,7 @@ export class AcademyService {
                 code = await this.codes.findOneAndReplace({
                     _id: id
                 }, {
-                    ...value, generationActor:old.generationActor,generationKey:old.generationKey,generationHash:old.generationHash,generatedAt:old.generatedAt,redeemed: old.redeemed, revision: old.revision + 1
+                    ...value, generationActor:old.generationActor,generationKey:old.generationKey,generationHash:old.generationHash,generationNonce:old.generationNonce,generatedAt:old.generatedAt,redeemed: old.redeemed, revision: old.revision + 1
                 }, {
                     session, returnDocument: 'after'
                 });

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {editorialPage} from '@/lib/public/server-editorial';
 import { notFound } from 'next/navigation';
 import { ArrowRight, ArrowUpRight, BookOpen } from 'lucide-react';
 import { inquiryHref } from '@/lib/inquiry/schema';
@@ -32,6 +33,7 @@ export async function ResearchPage({ search }: { search: Search }) {
   try { query = parseListQuery('research', search); } catch (error) {
     return <main id="public-main" tabIndex={-1} className={styles.page}><ResearchHeader listing/><Section tone="dark" className={styles.body}><div className={styles.state} role="alert"><h2>Check your filters</h2><p>{error instanceof Error ? error.message : 'Choose supported filters.'}</p><Link className={styles.textLink} href="/research">Reset filters</Link></div></Section></main>;
   }
+  const page=await editorialPage('research');
   const result = await contentList('research', query);
   // A filtered empty page cannot establish that the published collection is empty.
   const collection = result.state === 'available' && result.pagination.total === 0 && Object.keys(query.values).length
@@ -40,7 +42,7 @@ export async function ResearchPage({ search }: { search: Search }) {
     ? filterResearchDemos(query) : null;
   const unavailable = result.state === 'unavailable' || collection.state === 'unavailable';
   return <main id="public-main" tabIndex={-1} className={styles.page}>
-    <ResearchHeader listing><div className={styles.collaboration}><Link prefetch={false} href={inquiryHref('research')} className={styles.action}>Discuss collaboration<ArrowUpRight aria-hidden="true"/></Link></div></ResearchHeader>
+    <ResearchHeader listing title={page?.title} summary={page?.summary}><div className={styles.collaboration}><Link prefetch={false} href={inquiryHref('research')} className={styles.action}>Discuss collaboration<ArrowUpRight aria-hidden="true"/></Link></div></ResearchHeader>
     <Section tone="dark" className={styles.body}>
       <ResearchFilterForm key={query.params} query={query}/>
       {unavailable || result.state !== 'available' ? <Unavailable kind="research" query={query}/> : demos ? <ResearchDemoList key={`demos-${query.params}`} records={demos}/> : <>
@@ -57,8 +59,8 @@ export async function ResearchRecordPage({ slug }: { slug: string }) {
   if (result.state === 'unavailable') return <main id="public-main" tabIndex={-1} className={styles.page}><ResearchHeader title="Research temporarily unavailable"/><Section tone="dark" className={styles.body}><Unavailable kind="research" slug={slug}/><ResearchCollaboration/><PublicationsConnection/></Section></main>;
   const record = result.data, origin = publicOrigin(), url = canonicalUrl(`/research/${record.slug}`, origin, record);
   return <main id="public-main" tabIndex={-1} className={styles.page}>
-    <ResearchHeader title={record.title} summary={record.summary} detail><ResearchMetadata record={record}/><p className={styles.note}>{researchScopeNotice}</p></ResearchHeader>
-    {url && <StructuredData value={{ '@context': 'https://schema.org', '@type': 'CreativeWork', name: record.title, description: record.summary, datePublished: record.publishedAt, url }}/>}
+    <ResearchHeader title={record.title} summary={record.summary} detail>{record.illustrativeNotice&&<p className={styles.note}>{record.illustrativeNotice}</p>}<ResearchMetadata record={record}/><p className={styles.note}>{researchScopeNotice}</p></ResearchHeader>
+    {url && !record.illustrative && <StructuredData value={{ '@context': 'https://schema.org', '@type': 'CreativeWork', name: record.title, description: record.summary, datePublished: record.publishedAt, url }}/>}
     {origin && url && <StructuredData value={{ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [{ name: 'Home', item: origin }, { name: 'Research', item: `${origin}/research` }, { name: record.title, item: url }].map((entry, index) => ({ '@type': 'ListItem', position: index + 1, ...entry })) }}/>}
     <Section tone="dark" className={styles.body}><ResearchRecordContent record={record} overview={false}/><div className={styles.recordNavigation}><p className={styles.note}>Published <time dateTime={record.publishedAt}>{record.publishedAt.slice(0, 10)}</time></p><Link prefetch={false} className={styles.textLink} href="/research">All research<ArrowRight aria-hidden="true"/></Link></div><PublicationsConnection/></Section>
   </main>;

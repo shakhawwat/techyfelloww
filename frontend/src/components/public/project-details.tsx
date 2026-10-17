@@ -45,7 +45,7 @@ export function ProjectDetails({item,onClose,fallback}:{item:ShowcaseItem;onClos
  return <ConfirmAction title={record?.title??item.title} busy={false} onCancel={onClose} presentation="details" className={styles.projectDialog} headerClassName={styles.projectDialogHeader} contentClassName={styles.projectDialogContent} onEscape={expanded?()=>setExpanded(false):undefined}>
   {item.demo&&<><span className={styles.demoTag}>Illustrative demo</span><p className={styles.description}>Status: Proposed concept. The features, architecture and components below are suggestions, not completed or tested work.</p></>}
   <p className={styles.label}>{record?.category??item.category}</p>
-  <ProjectGallery photos={gallery} video={!!item.demo} fallback={fallback} expanded={expanded} onExpandedChange={setExpanded}/>
+  <ProjectGallery photos={gallery} video={!!item.demo||!!record?.videoInput} videoUrl={record?.videoInput} fallback={fallback} expanded={expanded} onExpandedChange={setExpanded}/>
   {!expanded&&<>
   {paragraph('Overview',record?.summary??item.summary)}
   {!item.demo&&!result&&<p className={styles.description} role="status">Loading project details…</p>}

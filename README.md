@@ -34,7 +34,7 @@ docker compose -p techyfellow-dev -f docker-compose.yml -f docker-compose.dev.ym
 docker compose -p techyfellow-dev -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.run.local.yml exec -T backend npm run db:indexes
 ```
 
-Open `/admin/login`, `/api/v1/health/live` and `/api/v1/health/ready` through the same local origin. No admin account is created automatically. Store navigation currently leads to a homepage teaser; catalog and store pages are unfinished. The worker is operational with delivery disabled; this does not complete Step 17 or verify live email. See [local configuration, startup fixes and actual checks](docs/local-run.md).
+Open `/admin/login`, `/api/v1/health/live` and `/api/v1/health/ready` through the same local origin. No admin account is created automatically. The homepage Store teaser and `/store/kits` remain valid entry points to the dedicated `/store` robotics catalog. Store carts, wishlists and unpaid order requests use existing member accounts; staff must publish real product/inventory data before ordering is available. The worker is operational with delivery disabled; this does not complete Step 17 or verify live email. See [local configuration, startup fixes and actual checks](docs/local-run.md).
 
 ## Installation and development
 
@@ -214,3 +214,7 @@ Step 16 adds `/build-with-us` and `/contact`, a shared React Hook Form/Zod syste
 ### Public accounts — Step 1
 
 Backend registration, MEMBER-only login, shared-session logout/me and email-code verification are documented in [docs/accounts.md](docs/accounts.md). No frontend account screens or commerce flows are implemented. Live verification delivery remains disabled and requires approved server-only email/encryption configuration.
+
+## Robotics Store
+
+The dedicated `/store` section includes catalog filters, product details and galleries, member wishlists, persisted carts, unpaid order requests and printable summaries. `/admin/store` manages categories and requests and links to the existing product/inventory and banner editors. Store requests are separate from Academy commerce and require staff stock/delivery confirmation. No payment gateway or deployment is included. See [Store configuration, permissions, indexing and verification](docs/store.md).

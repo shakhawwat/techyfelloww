@@ -1,5 +1,6 @@
 'use client';
 import Image from 'next/image';
+import {useHomeSections,useHomeSection} from './home-editorial';
 import Link from 'next/link';
 import {useEffect,useRef,useState,type PointerEvent,type ReactNode} from 'react';
 import {ArrowLeft,ArrowRight,ArrowUpRight,Bot,Radio,Cpu,FlaskConical,CircleAlert,Workflow,Wrench} from 'lucide-react';
@@ -29,11 +30,13 @@ function EngineeringSection({id,children}:{id:string;children:ReactNode}){
 }
 function SectionLink({href,children}:{href:string;children:ReactNode}){return <Link prefetch={false} href={href} className={styles.cta}>{children}<ArrowRight aria-hidden="true"/></Link>;}
 export function EngineeringServices(){
+ const override=useHomeSection('solutions'),sections=useHomeSections();
  const icons=[Bot,Radio,Cpu,FlaskConical,Workflow,Wrench],routes=['/solutions/robotics','/solutions/iot-embedded','/solutions/ai-vision','/research','/solutions/automation','/solutions/prototyping'];
- return <EngineeringSection id="solutions"><header className={styles.heading} data-reveal><p className={styles.label}>SOLUTIONS / ENGINEERING SERVICES</p><h2 id="solutions-title">Engineering ideas.{' '}<span>Into working systems.</span></h2><p className={styles.description}>{homeCopy.engineering.description}</p></header><div className={styles.services}>{homeCopy.engineering.services.map((title,index)=>{
- const Icon=icons[index],body=<><span className={styles.glassReflection} aria-hidden="true"/><div className={styles.panelTop}><Icon aria-hidden="true"/><span className={styles.label}>ENGINEERING / {String(index+1).padStart(2,'0')}</span></div><h3>{title}</h3>{routes[index]&&<ArrowRight className={styles.panelArrow} aria-hidden="true"/>}</>;
- return <div key={title} data-reveal>{routes[index]?<Link className={styles.panel} href={routes[index]} prefetch={false}>{body}</Link>:<article className={styles.panel}>{body}</article>}</div>;
- })}</div><SectionLink href="/solutions">Explore solutions</SectionLink></EngineeringSection>;
+ return <EngineeringSection id="solutions"><header className={styles.heading} data-reveal><p className={styles.label}>{override?.label??'SOLUTIONS / ENGINEERING SERVICES'}</p><h2 id="solutions-title">{override?.title??<>Engineering ideas.{' '}<span>Into working systems.</span></>}</h2><p className={styles.description}>{override?.description??homeCopy.engineering.description}</p></header><div className={styles.services}>{homeCopy.engineering.services.map((title,index)=>{
+ const entry=sections.find(section=>section.key===`solution-${index+1}`);if(entry?.visible===false)return null;const route=entry?.href??routes[index];
+ const Icon=icons[index],body=<><span className={styles.glassReflection} aria-hidden="true"/><div className={styles.panelTop}><Icon aria-hidden="true"/><span className={styles.label}>ENGINEERING / {String(index+1).padStart(2,'0')}</span></div><h3>{entry?.title??title}</h3>{route&&<ArrowRight className={styles.panelArrow} aria-hidden="true"/>}</>;
+ return <div key={title} data-reveal>{route?<Link className={styles.panel} href={route} prefetch={false}>{body}</Link>:<article className={styles.panel}>{body}</article>}</div>;
+ })}</div><SectionLink href={override?.href??"/solutions"}>{override?.cta??'Explore solutions'}</SectionLink></EngineeringSection>;
 }
 const projectConcepts = [
  {title:'Smart Agriculture Monitoring',category:'IoT / Sensors',description:'A concept for connecting soil and environmental sensors to a monitoring dashboard, helping explore conditions across a growing area.',kind:'agriculture',image:{url:'/banner/esp32Bannetr.jpg',altText:'Illustrative connected microcontroller hardware held in front of code',width:5589,height:3145}},
@@ -112,9 +115,10 @@ function ProjectShowcase({items,demos}:{items:ShowcaseItem[];demos:boolean}){
  </div>;
 }
 export function FeaturedProjects({content}:{content:ContentState}){
+ const override=useHomeSection('projects');
  const demos=content.state==='empty';
  const items:ShowcaseItem[]=demos?projectConcepts.map(concept=>({id:concept.kind,title:concept.title,category:concept.category,summary:concept.description,image:concept.image,demo:concept})):content.data.map(item=>({id:item.slug,title:item.title,category:item.category??'Published work',summary:item.summary,href:`/projects/${item.slug}`,image:item.media?.find(media=>approvedImage(media.url))}));
- return <EngineeringSection id="projects"><header className={styles.heading} data-reveal><h2 id="projects-title">Featured projects<span className={styles.rule} aria-hidden="true"/></h2><p className={`${styles.description} ${styles.projectsIntro}`}>Explore ideas across robotics, IoT and AI through engineering projects and concept previews. Discover their technologies, design approaches and potential applications.</p></header>
+ return <EngineeringSection id="projects"><header className={styles.heading} data-reveal><h2 id="projects-title">{override?.title??'Featured projects'}<span className={styles.rule} aria-hidden="true"/></h2><p className={`${styles.description} ${styles.projectsIntro}`}>{override?.description??'Explore ideas across robotics, IoT and AI through engineering projects and concept previews. Discover their technologies, design approaches and potential applications.'}</p></header>
  {content.state==='unavailable'?<div className={styles.availability} data-reveal role="status"><CircleAlert aria-hidden="true"/><p>{homeCopy.projects.unavailable}</p></div>:<><ProjectShowcase key={items.map(item=>item.id).join(':')} items={items} demos={demos}/></>}
  <SectionLink href="/projects">All projects</SectionLink></EngineeringSection>;
 }

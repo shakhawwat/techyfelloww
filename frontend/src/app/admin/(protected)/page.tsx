@@ -1,2 +1,2 @@
-import { AdminHome } from "@/components/admin/content-list";
-export default function AdminPage() { return <AdminHome />; }
+import { AdminDashboard } from "@/components/admin/dashboard";
+export default function AdminPage() { return <AdminDashboard />; }

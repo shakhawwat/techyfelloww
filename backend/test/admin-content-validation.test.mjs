@@ -45,7 +45,7 @@ test('incomplete drafts validate, publication requirements validate whole candid
 
 test('every admin route carries a finite explicit permission; only list handlers allow validated queries', () => {
   for (const [index, controller] of adminContentControllers.entries()) {
-    const kind = ['projects', 'research', 'publications', 'team', 'courses'][index];
+    const kind = ['projects', 'research', 'publications', 'team', 'courses', 'pages', 'products'][index];
     for (const [handler, action] of [['list', 'read'], ['detail', 'read'], ['create', 'edit'], ['edit', 'edit'], ['publish', 'publish'], ['unpublish', 'publish'], ['archive', 'edit']]) {
       assert.deepEqual(Reflect.getMetadata(ACCESS_POLICY, controller.prototype[handler]), { mode: 'permissions', permissions: [`${kind}:${action}`] });
       assert.equal(Reflect.getMetadata(VALIDATED_QUERY, controller.prototype[handler]), handler === 'list' ? true : undefined);

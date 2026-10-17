@@ -5,14 +5,14 @@ import {randomBytes} from 'node:crypto';
 import {Connection,Model} from 'mongoose';
 import {AuthService} from '../auth/auth.service';
 import {normalizeEmail,validEmail,type UserRecord} from '../auth/auth.schemas';
-import {hashPassword,validBootstrapPassword} from '../auth/password';
+import {hashPassword,validMemberPassword} from '../auth/password';
 import {hashToken} from '../auth/auth-http';
 import {encryptVerificationToken,verificationConfiguration} from './verification-config';
 import type {VerificationRecord,VerificationJobRecord} from './account.schemas';
 export function parseRegistration(body:unknown){
  if(!body||typeof body!=='object'||Array.isArray(body))throw new BadRequestException();
  const value=body as Record<string,unknown>,keys=Object.keys(value);
- if(keys.length!==4||keys.some(key=>!['name','email','password','passwordConfirmation'].includes(key))||typeof value.name!=='string'||typeof value.email!=='string'||!validBootstrapPassword(value.password)||value.passwordConfirmation!==value.password)throw new BadRequestException();
+ if(keys.length!==4||keys.some(key=>!['name','email','password','passwordConfirmation'].includes(key))||typeof value.name!=='string'||typeof value.email!=='string'||!validMemberPassword(value.password)||value.passwordConfirmation!==value.password)throw new BadRequestException();
  const name=value.name.trim(),email=normalizeEmail(value.email);
  if(!name||name.length>120||/[\x00-\x1f\x7f]/.test(name)||!validEmail(email))throw new BadRequestException();
  return {name,email,password:value.password};
@@ -41,7 +41,7 @@ export class AccountService{
  },{readPreference:'primary',readConcern:{level:'snapshot'},writeConcern:{w:'majority'},maxCommitTimeMS:1500,timeoutMS:10000});}finally{await session.endSession();}
  }catch(error){if(error instanceof Error&&'code' in error&&error.code===11000){await this.auth.audit('register','invalid_request');throw new BadRequestException();}if(error instanceof HttpException)throw error;throw new ServiceUnavailableException();}
  }
- async me(userId:string){try{const user=await this.users.findOne({_id:userId,enabled:true}).maxTimeMS(1500).lean();if(!user)throw new UnauthorizedException();return accountDto(user);}catch(error){if(error instanceof HttpException)throw error;throw new ServiceUnavailableException();}}
+ async me(userId:string){try{const user=await this.users.findOne({_id:userId,enabled:true}).maxTimeMS(1500).lean();if(!user)throw new UnauthorizedException();const profile=await this.connection.collection('member_profiles').findOne({owner:userId},{projection:{photo:1}});return {...accountDto(user),photoUrl:profile?.photo?`/api/v1/community/images/${profile.photo}`:''};}catch(error){if(error instanceof HttpException)throw error;throw new ServiceUnavailableException();}}
  /** Future sensitive MEMBER transactions must call this inside their authorization path. */
  async requireVerifiedMember(userId:string){const user=await this.me(userId);if(user.role!=='MEMBER'||!user.emailVerified)throw new ForbiddenException();return user;}
  async verifyEmail(body:unknown,ip:string){

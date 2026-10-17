@@ -1,3 +1,8 @@
+import {validateDocument} from '../media/document-validation';
+import {realpath,writeFile,unlink} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {randomBytes} from 'node:crypto';
+import type {UploadFile} from '../media/media.service';
 import {BadRequestException,Injectable,NotFoundException,ServiceUnavailableException} from '@nestjs/common';
 import {InjectConnection} from '@nestjs/mongoose';
 import {ConfigService} from '@nestjs/config';
@@ -10,6 +15,12 @@ import type {LearningCourse} from './academy.schemas';
 @Injectable()
 export class AcademyManagementService {
  constructor(@InjectConnection() private readonly db:Connection,private readonly academy:AcademyService,private readonly content:AdminContentService,private readonly config:ConfigService){}
+ async uploadResource(file:UploadFile|undefined,actor:AuthIdentity){
+  if(!file)throw new BadRequestException({fields:['file']});
+  const document=validateDocument(file.buffer,file.originalname,this.config.getOrThrow<number>('MEDIA_MAX_BYTES'));
+  const root=this.config.get<string>('ACADEMY_MEDIA_ROOT');if(!root)throw new ServiceUnavailableException();
+  let path:string|undefined,stored=false;try{const directory=await realpath(root),key=`resource-${randomBytes(16).toString('hex')}.${document.extension}`;path=resolve(directory,key);await writeFile(path,document.data,{flag:'wx',mode:0o600});stored=true;await this.collection('academy_audits').insertOne({actor:actor.id,action:'private_resource_upload',target:key,createdAt:new Date()},{writeConcern:{w:'majority'}});return {key,filename:document.filename};}catch{if(path&&stored)try{await unlink(path);}catch{ /* Keep the generic storage error. */ }throw new ServiceUnavailableException();}
+ }
  private collection(name:string){return this.db.db!.collection(name);}
  async dashboard(){
   const counts=await Promise.all(['courses','academy_enrollments','academy_orders','academy_scholarships','academy_redemptions'].map(name=>this.collection(name).countDocuments()));

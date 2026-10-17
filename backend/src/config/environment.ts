@@ -1,5 +1,6 @@
 import { emailConfiguration } from "../notifications/email.config";
 import { mediaConfiguration } from "../media/media.config";
+import {isAbsolute} from "node:path";
 import { isIP } from "node:net";
 import { mongo } from "mongoose";
 
@@ -39,6 +40,7 @@ export function validateEnvironment(env: Record<string, unknown>) {
   const proxies = proxyText ? proxyText.split(",").map(value => value.trim()) : [];
   if (proxies.some(ip => !isIP(ip))) throw new Error("AUTH_TRUSTED_PROXY_IPS must contain literal proxy IPs");
   if (env.ACCOUNT_VERIFICATION_KEY !== undefined && env.ACCOUNT_VERIFICATION_KEY !== "" && (typeof env.ACCOUNT_VERIFICATION_KEY !== "string" || !/^[a-f0-9]{64}$/.test(env.ACCOUNT_VERIFICATION_KEY))) throw new Error("ACCOUNT_VERIFICATION_KEY must be 64 lowercase hex characters");
+  if(env.ACADEMY_MEDIA_ROOT!==undefined&&env.ACADEMY_MEDIA_ROOT!==''&&(typeof env.ACADEMY_MEDIA_ROOT!=='string'||!isAbsolute(env.ACADEMY_MEDIA_ROOT)||/(?:^|[\\/])public(?:[\\/]|$)/i.test(env.ACADEMY_MEDIA_ROOT)))throw new Error('ACADEMY_MEDIA_ROOT must be an absolute private storage directory outside public assets');
   emailConfiguration(env);
   return { ...env, ...mediaConfiguration(env), NODE_ENV: nodeEnv, PORT: port, MONGODB_URI: uri,
     AUTH_ALLOWED_ORIGINS: [...new Set(origins)], AUTH_SESSION_TTL_SECONDS: ttl, AUTH_TRUSTED_PROXY_IPS: proxies };

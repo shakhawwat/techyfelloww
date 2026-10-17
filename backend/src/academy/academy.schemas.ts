@@ -62,6 +62,7 @@ export interface Scholarship {
     generationActor?: string;
     generationKey?: string;
     generationHash?: string;
+    generationNonce?: string;
     generatedAt?: Date;
     totalLimit: number;
     perAccountLimit: number;
@@ -140,7 +141,7 @@ enrollment.index({
 const scholarship = new Schema<Scholarship>({
     codeHash: {
         type: String, required: true, select: false
-    }, generationActor:{type:String,select:false},generationKey:{type:String,select:false},generationHash:{type:String,select:false},generatedAt:Date,label: String, courses: [String], anyCourse: Boolean, kind: {
+    }, generationActor:{type:String,select:false},generationKey:{type:String,select:false},generationHash:{type:String,select:false},generationNonce:{type:String,select:false},generatedAt:Date,label: String, courses: [String], anyCourse: Boolean, kind: {
         type: String, enum: ['percentage', 'fixed', 'full']
     }, amount: Number, amountMinor: Number, startsAt: Date, expiresAt: Date, totalLimit: Number, perAccountLimit: Number, minimumSpendMinor: Number, recipientEmail: String, active: Boolean, redeemed: {
         type: Number, default: 0
@@ -177,22 +178,22 @@ const audit = new Schema<AcademyAudit>({
     strict: true, autoIndex: false, autoCreate: false
 });
 export type OrderStatus = 'blocked' | 'pending' | 'paid' | 'free' | 'scholarship' | 'failed' | 'cancelled' | 'expired' | 'payment_review';
-export interface AcademyOrderItem {courseSlug:string;courseTitle:string;subtotalMinor:number;discountMinor:number;finalMinor:number;currentPriceMinor:number;codeId?:string;reservationActive:boolean;}
+export interface AcademyOrderItem {courseSlug:string;courseTitle:string;subtotalMinor:number;discountMinor:number;finalMinor:number;currentPriceMinor:number;codeId?:string;reservationActive:boolean;scholarshipPercentage?:number;codeReference?:string;}
 export interface AcademyCart {userId:string;courseSlugs:string[];}
 export interface AcademyOrder {
-    userId: string; courseSlug: string; courseTitle: string; currency: 'BDT'; items?:AcademyOrderItem[];
+    userId: string; courseSlug: string; courseTitle: string; currency: 'BDT'; checkoutMode?:'scholarship'; learnerName?:string; learnerEmail?:string; scholarshipPercentage?:number; codeReference?:string; items?:AcademyOrderItem[];
     subtotalMinor: number; discountMinor: number; finalMinor: number; currentPriceMinor?: number;
     status: OrderStatus; idempotencyKey: string; requestHash: string; codeId?: string;
     reservationActive: boolean; expiresAt: Date; createdAt: Date; providerReference?: string; checkoutUrl?: string;
 }
 export interface PaymentEventRecord { eventId: string; orderId: string; status: string; createdAt: Date }
-const orderItem=new Schema<AcademyOrderItem>({courseSlug:String,courseTitle:String,subtotalMinor:Number,discountMinor:Number,finalMinor:Number,currentPriceMinor:Number,codeId:String,reservationActive:Boolean},nested);
+const orderItem=new Schema<AcademyOrderItem>({courseSlug:String,courseTitle:String,subtotalMinor:Number,discountMinor:Number,finalMinor:Number,currentPriceMinor:Number,codeId:String,reservationActive:Boolean,scholarshipPercentage:Number,codeReference:String},nested);
 const cart=new Schema<AcademyCart>({userId:{type:String,required:true},courseSlugs:[String]},{strict:true,autoIndex:false,autoCreate:false});cart.index({userId:1},{unique:true});
 const order = new Schema<AcademyOrder>({ userId: {type:String,required:true}, courseSlug:{type:String,required:true}, courseTitle:String,
     items:{type:[orderItem],default:undefined},currency:{type:String,enum:['BDT'],required:true}, subtotalMinor:Number,discountMinor:Number,finalMinor:Number,currentPriceMinor:Number,
     status:{type:String,enum:['blocked','pending','paid','free','scholarship','failed','cancelled','expired','payment_review'],required:true},
     idempotencyKey:String,requestHash:{type:String,select:false},codeId:String,reservationActive:Boolean,expiresAt:Date,
-    createdAt:{type:Date,default:Date.now},providerReference:String,checkoutUrl:String
+    createdAt:{type:Date,default:Date.now},providerReference:String,checkoutUrl:String,checkoutMode:{type:String,enum:['scholarship']},learnerName:String,learnerEmail:String,scholarshipPercentage:Number,codeReference:String
 }, {strict:true,autoIndex:false,autoCreate:false});
 order.index({userId:1,idempotencyKey:1},{unique:true});
 order.index({providerReference:1},{unique:true,sparse:true});

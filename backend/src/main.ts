@@ -21,8 +21,8 @@ async function bootstrap(): Promise<void> {
   const origins = config.getOrThrow<string[]>("AUTH_ALLOWED_ORIGINS");
   app.enableCors({
     origin: (origin: string | undefined, callback: (error: Error | null, allowed: boolean) => void) => callback(null, origin !== undefined && origins.includes(origin)),
-    credentials: true, methods: ["GET", "HEAD", "POST", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-CSRF-Protection", "Idempotency-Key"], maxAge: 600,
+    credentials: true, methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-CSRF-Protection", "X-Techyfellow-Session", "Idempotency-Key"], maxAge: 600,
   });
   const proxies = new Set(config.getOrThrow<string[]>("AUTH_TRUSTED_PROXY_IPS"));
   app.getHttpAdapter().getInstance().set("trust proxy", (ip: string) =>

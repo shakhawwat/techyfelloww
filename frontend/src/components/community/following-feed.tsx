@@ -1,0 +1,16 @@
+'use client';
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+import {useAccountSession} from '@/components/account/session';
+import {api,errorOf} from '@/lib/admin/api';
+import {BlogWorkspace} from './blog-workspace';
+import {BlogFeed} from './blog-feed';
+import {useBlogNetwork} from './blog-network';
+import {BlogSearchBar} from './blog-search-bar';
+import type {BlogPost} from './types';
+import styles from './community.module.css';
+type Result={data:BlogPost[];categories:string[];pagination:{page:number;pages:number}};
+export function FollowingFeed({params}:{params:{search?:string;category?:string;page?:string}}){const {session}=useAccountSession();return <Following key={JSON.stringify([session.user?.id??session.status,params])} params={params} authenticated={session.status==='authenticated'} loading={session.status==='loading'}/>;}
+function Following({params,authenticated,loading}:{params:{search?:string;category?:string;page?:string};authenticated:boolean;loading:boolean}){const [result,setResult]=useState<Result|null>(null),[error,setError]=useState(''),[attempt,setAttempt]=useState(0);const query=new URLSearchParams();for(const name of ['search','category','page'] as const)if(params[name])query.set(name,params[name]!);const encoded=query.toString();useEffect(()=>{if(!authenticated)return;const abort=new AbortController();api<Result>('/account/blog/feed/following'+(encoded?'?'+encoded:''),'GET',undefined,abort.signal).then(value=>{if(!abort.signal.aborted){setResult(value);setError('');}}).catch(cause=>{if(!abort.signal.aborted)setError(errorOf(cause).message);});return()=>abort.abort();},[authenticated,encoded,attempt]);function href(page:number){const next=new URLSearchParams(query);next.set('page',String(page));return '/blog/following?'+next;}return <main id="public-main" className={`${styles.page} ${styles.blogPage}`}><BlogSearchBar search={params.search??''} category={params.category??''} categories={result?.categories??[]} action="/blog/following"/><BlogWorkspace publicPosts={result?.data??[]}><h1>Following</h1>{!authenticated?<p>{loading?'Checking your account…':<Link href={'/login?returnTo='+encodeURIComponent('/blog/following'+(encoded?'?'+encoded:''))}>Log in to see posts from authors you follow</Link>}</p>:error?<p role="alert">{error} <button onClick={()=>{setError('');setAttempt(n=>n+1);}}>Retry</button></p>:!result?<p role="status">Loading followed authors’ posts…</p>:<>{result.data.length?<FollowedPosts posts={result.data}/>:<p className={styles.empty}>No published posts match your followed authors and filters yet.</p>}<nav className={styles.actions} aria-label="Following pages">{result.pagination.page>1&&<Link href={href(result.pagination.page-1)}>Previous</Link>}{result.pagination.page<result.pagination.pages&&<Link href={href(result.pagination.page+1)}>Next</Link>}</nav></>}</BlogWorkspace></main>;}
+
+function FollowedPosts({posts}:{posts:BlogPost[]}){const network=useBlogNetwork();if(network.loading)return <p role="status">Loading subscriptions…</p>;if(network.error)return null;const visible=posts.filter(post=>post.author.id&&network.preferences.following.includes(post.author.id));return visible.length?<BlogFeed posts={visible} includeReposts={false}/>:<p className={styles.empty}>No published posts from authors you currently follow.</p>;}

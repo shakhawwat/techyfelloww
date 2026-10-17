@@ -2,12 +2,13 @@ import { Schema, type Types } from 'mongoose';
 import { resources } from '../auth/permissions';
 import type { ContentKind } from '../content/content.types';
 export interface MediaRecord {
-  storageKey: string; filename: string; mimeType: string; size: number; width: number; height: number; altText: string;
+  localPath?:string; storageKey: string; filename: string; mimeType: string; size: number; width: number; height: number; altText: string;
   resource: ContentKind; uploader: Types.ObjectId; status: 'uploading' | 'ready' | 'failed'; revision: number; cleanupPending: boolean; createdAt: Date; updatedAt: Date;
 }
 const schema = new Schema<MediaRecord>({
+  localPath:{type:String,immutable:true,match:/^\/banner\/[a-zA-Z0-9_.-]+$/},
   storageKey: { type: String, required: true, immutable: true }, filename: { type: String, required: true, maxlength: 120 },
-  mimeType: { type: String, enum: ['image/jpeg','image/png','image/webp'], required: true }, size: { type: Number, required: true, min: 1 },
+  mimeType: { type: String, enum: ['image/jpeg','image/png','image/webp','application/pdf','text/plain'], required: true }, size: { type: Number, required: true, min: 1 },
   width: { type: Number, required: true, min: 1 }, height: { type: Number, required: true, min: 1 },
   altText: { type: String, required: true, minlength: 3, maxlength: 500 }, resource: { type: String, enum: resources, required: true, immutable: true },
   uploader: { type: Schema.Types.ObjectId, required: true, immutable: true }, status: { type: String, enum: ['uploading','ready','failed'], required: true },

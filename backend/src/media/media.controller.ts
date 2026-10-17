@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {parseAcademyVideo} from '../academy/academy-video';
+import {object} from '../academy/academy-input';
 import { Authenticated, MultipartMutation, RequireAnyPermissions, ValidatedQuery, resources } from '../auth/permissions';
 import type { AuthRequest } from '../auth/auth-http';
 import { MediaService, type UploadFile } from './media.service';
@@ -7,6 +9,8 @@ import { MediaExceptionFilter } from './media.filter';
 @Controller('admin/media') @UseFilters(MediaExceptionFilter)
 export class MediaController {
   constructor(private readonly media: MediaService) {}
+  @Post('video-preview') @RequireAnyPermissions(...resources.map(resource=>`${resource}:edit`))
+  video(@Body() body:unknown){return {data:{embedUrl:parseAcademyVideo(object(body,['input']).input)}};}
   @Get() @Authenticated() @ValidatedQuery()
   list(@Query() query: Record<string,unknown>,@Req() request:AuthRequest){return this.media.list(query,request.auth!.user);}
   @Get(':id') @Authenticated()

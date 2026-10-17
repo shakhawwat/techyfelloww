@@ -5,7 +5,7 @@ export const transitions: Record<LeadStatus, readonly LeadStatus[]> = { received
 export type Lead = { id: string; reference: string; type: typeof inquiryTypes[number]; name: string; email: string; phone?: string; organization?: string; status: LeadStatus; ownerId: string | null; revision: number; createdAt: string; updatedAt: string; payload?: Record<string, string | number>; consent?: boolean; marketingConsent?: boolean; source?: string; notes?: { text: string; actor: string; createdAt: string }[] };
 export type Pagination = { page: number; limit: number; total: number; totalPages: number };
 export type LeadList = { data: Lead[]; pagination: Pagination };
-export type LeadOwner = { id: string; email: string; role: 'SUPER_ADMIN' | 'SALES_MANAGER' };
+export type LeadOwner = { id: string; email: string; role: 'SUPER_ADMIN' | 'SALES_MANAGER' | `CUSTOM_${string}` };
 export type OwnerList = { data: LeadOwner[]; pagination: Pagination };
 export const payloadLabels: Record<string, string> = { projectType: 'Project type', problem: 'Problem', budgetRange: 'Budget range', timeline: 'Timeline', description: 'Description', domain: 'Domain', currentStage: 'Current stage', expectedDeliverable: 'Expected deliverable', availableDataHardware: 'Available data / hardware', university: 'University', department: 'Department', area: 'Area', teamSize: 'Team size', stage: 'Stage', requestedHelp: 'Requested help', institution: 'Institution', participantCount: 'Participant count', topics: 'Topics', date: 'Requested date', deliveryMode: 'Requested delivery mode', location: 'Location', course: 'Course', cohort: 'Cohort', experienceLevel: 'Experience level', contactPreference: 'Contact preference', message: 'Message' };
 export function checkedLead(record: Lead, detail = false): Lead {
@@ -13,4 +13,4 @@ export function checkedLead(record: Lead, detail = false): Lead {
   if (detail && (!record.payload || typeof record.payload !== 'object' || Array.isArray(record.payload) || !Array.isArray(record.notes) || record.notes.some(note => typeof note.text !== 'string' || !/^[a-f0-9]{24}$/.test(note.actor) || !Number.isFinite(Date.parse(note.createdAt))))) throw Error('Invalid lead detail');
   return record;
 }
-export function checkedOwners(list: OwnerList) { if (!Array.isArray(list.data) || !Number.isSafeInteger(list.pagination?.totalPages) || list.data.some(owner => !/^[a-f0-9]{24}$/.test(owner.id) || typeof owner.email !== 'string' || !['SUPER_ADMIN', 'SALES_MANAGER'].includes(owner.role))) throw Error('Invalid owner response'); return list; }
+export function checkedOwners(list: OwnerList) { if (!Array.isArray(list.data) || !Number.isSafeInteger(list.pagination?.totalPages) || list.data.some(owner => !/^[a-f0-9]{24}$/.test(owner.id) || typeof owner.email !== 'string' || !(['SUPER_ADMIN', 'SALES_MANAGER'].includes(owner.role)||/^CUSTOM_[a-f0-9]{24}$/.test(owner.role)))) throw Error('Invalid owner response'); return list; }

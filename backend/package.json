@@ -24,7 +24,8 @@
     "test:account": "node --test test/account.integration.test.mjs",
     "test:academy": "node --test test/academy.integration.test.mjs",
     "test:academy-commerce": "node --test test/academy-commerce.integration.test.mjs",
-    "test:academy-cart": "node --test test/academy-cart.integration.test.mjs"
+    "test:academy-cart": "node --test test/academy-cart.integration.test.mjs",
+    "demos:import": "node scripts/import-demo-content.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1146.0",

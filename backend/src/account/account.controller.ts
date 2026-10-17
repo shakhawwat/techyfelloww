@@ -14,9 +14,9 @@ export class AccountController{
  @Post('register') @PublicEndpoint() @Header('Cache-Control','no-store')
  async register(@Body() body:unknown,@Req() request:AuthRequest){this.query(request);return {data:await this.account.register(body,this.ip(request))};}
  @Post('login') @PublicEndpoint() @HttpCode(200) @Header('Cache-Control','no-store')
- async login(@Body() body:unknown,@Req() request:AuthRequest,@Res({passthrough:true}) response:Response){this.query(request);const production=this.config.get('NODE_ENV')==='production';const result=await this.auth.login(body,this.ip(request),readSessionToken(request,production),true);const user=await this.account.me(result.user.id);response.cookie(cookieName(production),result.token,{...cookieOptions(production),expires:result.expiresAt});return {data:{user}};}
+ async login(@Body() body:unknown,@Req() request:AuthRequest,@Res({passthrough:true}) response:Response){this.query(request);const production=this.config.get('NODE_ENV')==='production';const result=await this.auth.login(body,this.ip(request),readSessionToken(request,production),true);const user=await this.account.me(result.user.id);response.cookie(cookieName(production,true),result.token,{...cookieOptions(production),expires:result.expiresAt});return {data:{user}};}
  @Post('logout') @Authenticated() @HttpCode(200)
- async logout(@Body() body:unknown,@Req() request:AuthRequest,@Res({passthrough:true}) response:Response){if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).length)throw new BadRequestException();const {sessionId,user}=request.auth!;await this.auth.logout(sessionId,user.id);clearSessionCookie(response,this.config.get('NODE_ENV')==='production');return {data:{loggedOut:true}};}
+ async logout(@Body() body:unknown,@Req() request:AuthRequest,@Res({passthrough:true}) response:Response){if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).length)throw new BadRequestException();const {sessionId,user}=request.auth!;await this.auth.logout(sessionId,user.id);clearSessionCookie(response,this.config.get('NODE_ENV')==='production',true);return {data:{loggedOut:true}};}
  @Get('me') @Authenticated()
  async me(@Req() request:AuthRequest){return {data:{user:await this.account.me(request.auth!.user.id)}};}
  @Post('verify-email') @PublicEndpoint() @HttpCode(200) @Header('Cache-Control','no-store')

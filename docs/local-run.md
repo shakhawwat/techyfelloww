@@ -2,6 +2,18 @@
 
 The implemented system is running as Compose project `techyfellow-dev` at **http://localhost:8081**, with frontend, backend, private MongoDB replica set, Nginx and the notification worker. MongoDB initialization completed with exit 0. The persistent volume is `techyfellow-dev_mongodb-data`; no previous volumes or unrelated services were removed. An unrelated application already occupies localhost:8080.
 
+## Academy admin route and checkout
+
+Open **http://localhost:8081/admin/academy** and sign in with an existing authorized admin account. The existing Academy navigation link uses this route. `frontend/src/app/admin/(protected)/academy/page.tsx` renders `AcademyAdminWorkspace`, with Courses and Scholarship codes tabs inside the existing admin session and course-edit authorization gates.
+
+Port **3000** currently belongs to the separate `website/digital service` Compose project (`techyfellow-frontend-1`), whose built image has no source bind mount and no Academy admin route. Rebuilding this checkout does not update that application. This checkout's `techyfellow-dev-frontend-1` mounts its `frontend/src` live and serves through Nginx on port 8081. Do not change the other application's sidebar or containers to resolve this mismatch.
+
+If this checkout's development server needs restarting, run from this directory:
+
+```sh
+docker compose -p techyfellow-dev -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.run.local.yml restart frontend
+```
+
 From the project root:
 
 ```sh
@@ -49,7 +61,7 @@ The worker shares the backend codebase and existing MongoDB. Its development com
 
 ## Unfinished functionality
 
-Store navigation currently resolves to `/#store`. `/store`, `/store/products`, `/api/v1/categories`, `/api/v1/products` and `/api/v1/kits` return 404 because catalog/store pages are not implemented. This is not a working commerce system.
+The homepage Store anchor remains supported. The dedicated `/store` and `/store/products` pages now provide the robotics catalog; `/store/kits` remains compatible. Public Store data is under `/api/v1/store/`. Existing member accounts can save wishlists/carts and submit unpaid requests for staff review. Store category/product/inventory/banner configuration and request management are documented in [store.md](store.md). No published inventory is invented, and payment collection/fulfillment are not automatic.
 
 Step 17 remains incomplete: enabled-provider retries/lease recovery/terminal failures and the complete acceptance suite have not been verified. Worker startup and disabled delivery checks do not establish Resend delivery. Real email/provider connectivity and real R2 checks are NOT RUN. Steps 18–20 have no completed R1 acceptance/catalog implementation. No public deployment was performed.
 

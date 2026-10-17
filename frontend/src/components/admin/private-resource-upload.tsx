@@ -1,0 +1,12 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {apiBase} from '@/lib/admin/api';
+import {useAdmin} from './session';
+import {Button} from '@/components/ui/button';
+export function PrivateResourceUpload({disabled,onSaved}:{disabled:boolean;onSaved:(value:{id:string;title:string;file:string})=>void}){
+ const {signal}=useAdmin(),pending=useRef<XMLHttpRequest|null>(null);
+ useEffect(()=>()=>pending.current?.abort(),[]);
+ const [file,setFile]=useState<File|null>(null),[busy,setBusy]=useState(false),[progress,setProgress]=useState(0),[message,setMessage]=useState(''),[error,setError]=useState('');
+ function upload(){if(!file||busy||signal.aborted)return;setBusy(true);setProgress(0);setError('');setMessage('');const xhr=new XMLHttpRequest();pending.current=xhr;const abort=()=>xhr.abort();signal.addEventListener('abort',abort,{once:true});xhr.onloadend=()=>signal.removeEventListener('abort',abort);xhr.open('POST',`${apiBase()}/admin/academy/management/resources/upload`);xhr.withCredentials=true;xhr.timeout=60000;xhr.setRequestHeader('X-CSRF-Protection','1');xhr.upload.onprogress=e=>{if(e.lengthComputable)setProgress(Math.round(e.loaded/e.total*100));};xhr.onload=()=>{if(signal.aborted)return;try{if(xhr.status===503)throw Error('Private lesson storage is not configured or unavailable.');if(xhr.status<200||xhr.status>=300)throw Error('Resource upload was rejected. Check the file, permission and session.');const result=JSON.parse(xhr.responseText).data;if(!/^resource-[a-f0-9]{32}\.(pdf|txt)$/.test(result?.key))throw Error('Upload response could not be verified.');onSaved({id:crypto.randomUUID(),title:result.filename,file:result.key});setMessage('Restricted resource stored. Save the course to attach it to this lesson.');setFile(null);}catch(e){setError(e instanceof Error?e.message:'Upload could not be confirmed.');}finally{setBusy(false);}};xhr.onerror=xhr.ontimeout=()=>{setError('Upload could not be confirmed. Retry after checking the connection.');setBusy(false);};const form=new FormData();form.append('file',file);xhr.send(form);}
+ return <div><label>Upload restricted lesson resource (PDF / TXT)<input type="file" accept=".pdf,.txt" disabled={disabled||busy} onChange={e=>{setFile(e.target.files?.[0]??null);setMessage('');}}/></label><Button disabled={disabled||busy||!file} onClick={upload}>{busy?`Sending ${progress}%…`:error?'Retry resource upload':'Upload restricted resource'}</Button>{message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}</div>;
+}

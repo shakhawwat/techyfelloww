@@ -23,3 +23,22 @@
 .module {overflow-wrap:anywhere;}
 
 .video {width:100%;aspect-ratio:16/9;border:0;display:block;margin-top:12px;}
+.tabs button[aria-selected="false"] {background:transparent;color:var(--foreground);border:1px solid var(--border);}
+.tabs button[aria-selected="true"] {border:1px solid #16c2ff;}
+
+/* Align Academy tools with the compact admin workspace. */
+.shell {padding:0;border:0;border-radius:0;background:transparent;}
+.shell h1 {font-size:26px;margin:0 0 16px;}
+.shell h2 {font-size:18px;}
+.shell p {font-size:14px;margin:8px 0;}
+.nav,.actions {gap:8px;margin:12px 0;}
+.card,.record,.module {padding:12px;margin:12px 0;background:#101d2d;}
+.card strong {font-size:24px;}
+.shell fieldset {border-radius:6px;padding:16px;}
+.shell legend {font-size:18px;font-weight:600;padding:0 6px;}
+.shell details {border-top:1px solid var(--border);padding-top:8px;margin-top:12px;}
+.shell summary {cursor:pointer;min-height:40px;font-size:14px;align-content:center;}
+.shell label {margin:10px 0;}
+@media(max-width:700px){.shell{padding:0;}.shell h1{font-size:23px;}}
+.nav a {padding:8px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;}
+.nav a[aria-current] {background:#123447;border-color:#16c2ff;}

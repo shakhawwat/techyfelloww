@@ -1,3 +1,9 @@
+import {storeDefinitions} from '../store/store.schemas';
+import {moderationDefinitions} from '../messaging/moderation.schema';
+import {directDefinitions} from '../messaging/direct.schema';
+import {communityDefinitions} from '../community/community.schemas';
+import {chatMediaDefinition} from '../messaging/chat-media.schema';
+import {messagingDefinition} from '../messaging/messaging.schema';
 import { academyDefinitions } from "../academy/academy.schemas";
 import { accountDefinitions } from "../account/account.schemas";
 import { notificationDefinition } from "../notifications/notification.schema";
@@ -16,7 +22,7 @@ async function main(): Promise<void> {
     connection = createConnection(config.MONGODB_URI, databaseOptions);
     connection.on("error", () => undefined);
     await connection.asPromise();
-    for (const definition of [...Object.values(contentDefinitions), ...academyDefinitions, ...Object.values(authDefinitions), ...Object.values(accountDefinitions), ...Object.values(leadDefinitions), contentAuditDefinition, mediaDefinition, mediaAuditDefinition, notificationDefinition]) {
+    for (const definition of [...Object.values(contentDefinitions), ...storeDefinitions, ...academyDefinitions, ...communityDefinitions, ...directDefinitions, ...moderationDefinitions, messagingDefinition, chatMediaDefinition, ...Object.values(authDefinitions), ...Object.values(accountDefinitions), ...Object.values(leadDefinitions), contentAuditDefinition, mediaDefinition, mediaAuditDefinition, notificationDefinition]) {
       const model = connection.model(definition.name, definition.schema, definition.collection);
       await model.createIndexes();
       console.log(`Indexes created: ${definition.collection}`);

@@ -4,13 +4,14 @@ export type ServiceGroup = 'solutions' | 'consulting' | 'institutional';
 export type ServiceIcon = 'robot' | 'chip' | 'vision' | 'automation' | 'prototype' | 'capstone' | 'research' | 'startup' | 'school' | 'university' | 'industry';
 export type ContentBlock = { title: string; text?: string; items?: readonly string[] };
 export type RelatedReference = { kind: 'projects' | 'research'; slug: string };
-export type ServiceDefinition = {
+export type ServiceDefinition = {processSteps?:{title:string;text:string}[];pathways?:import('./solution-projects').ProjectPathway[];
+  media?:{url:string;altText:string};faqs?:{question:string;answer:string}[];inquiryHref?:string;mentorSlugs?:string[];
   slug: string; title: string; summary: string; icon: ServiceIcon;
   audience: readonly string[]; blocks: readonly ContentBlock[];
   deliverables: readonly string[]; responsibilities: readonly string[];
   integrity?: string; related: readonly RelatedReference[];
 };
-export type GroupDefinition = { title: string; eyebrow: string; summary: string; audienceTitle: string; items: readonly ServiceDefinition[] };
+export type GroupDefinition = {processSteps?:{title:string;text:string}[];heading?:string;programs?:import('@/lib/public/editorial').EditorialPage[];faqs?:{question:string;answer:string}[];inquiryHref?:string; title: string; eyebrow: string; summary: string; audienceTitle: string; items: readonly ServiceDefinition[] };
 export const serviceCopy = {
   proposed: 'Proposed service scope',
   notice: 'These pages describe proposed scopes for discussion. Deliverables, timelines, availability and commercial terms must be agreed before any engagement.',

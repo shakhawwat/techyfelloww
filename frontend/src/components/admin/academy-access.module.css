@@ -10,3 +10,15 @@
 .page button { margin:4px 8px 4px 0; }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
 @media(max-width:700px) { .grid { grid-template-columns:1fr; } }
+.generator {border:1px solid var(--border);border-radius:6px;padding:16px;background:var(--surface-raised);}
+.generator fieldset {border:0;min-width:0;padding:0;margin:0 0 12px;}
+.generator details {margin-top:12px;border-top:1px solid var(--border);padding-top:8px;}
+.generator summary {cursor:pointer;font-size:14px;}
+.generated {border:1px solid #16c2ff;border-radius:6px;padding:16px;}
+.generated strong {color:#16c2ff;}
+.generated input {font-family:monospace;}
+.tableScroll {overflow-x:auto;}
+.tableScroll table {width:100%;border-collapse:collapse;font-size:14px;}
+.tableScroll :is(th,td) {text-align:left;padding:12px;vertical-align:top;overflow-wrap:anywhere;}
+.tableScroll td:first-child {font-family:monospace;font-size:12px;}
+@media(max-width:700px){.generator,.generated{padding:12px;}.tableScroll table{min-width:620px;}}

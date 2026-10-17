@@ -100,11 +100,12 @@ const selections: Record<SolutionSlug, PathwaySelection[]> = {
   ],
 };
 export function solutionProjects(service: ServiceDefinition & { slug: SolutionSlug }): ProjectPathway[] {
-  const select = (items: readonly string[], indices: number[]) => indices.map(index => items[index]);
+  if(service.pathways)return service.pathways;
+  const select = (items: readonly string[], indices: number[]) => indices.flatMap(index => items[index] ? [items[index]] : []);
   return selections[service.slug].map(pathway => ({
     title: pathway.title, description: pathway.description, approach: pathway.approach, evaluation: pathway.evaluation,
-    problems: select(service.blocks[0].items ?? [], pathway.problems),
-    capabilities: select(service.blocks[1].items ?? [], pathway.capabilities),
+    problems: select(service.blocks[0]?.items ?? [], pathway.problems),
+    capabilities: select(service.blocks[1]?.items ?? [], pathway.capabilities),
     deliverables: select(service.deliverables, pathway.deliverables),
     requirements: select(service.responsibilities, pathway.requirements),
   }));

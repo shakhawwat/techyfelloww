@@ -1,7 +1,7 @@
 import type { ListQuery, PublicRecord } from '@/lib/public/pages';
 
 export const publicationDemoNotice = 'Illustrative publication previews — not published papers or verified journal metrics.';
-export type PublicationPreview = { id: string; title: string; abstract: string; demo: boolean; authors?: string[]; venue?: string; year?: number; doi?: string; publisherUrl?: string; domain?: string; methods?: string[]; findings?: string[]; limitations?: string[]; impactFactor?: number; metricYear?: number };
+export type PublicationPreview = {illustrative?:boolean; illustrativeNotice?:string; citation?:string; id: string; title: string; abstract: string; demo: boolean; authors?: string[]; venue?: string; year?: number; doi?: string; publisherUrl?: string; domain?: string; methods?: string[]; findings?: string[]; limitations?: string[]; impactFactor?: number; metricYear?: number };
 
 export const publicationDemos: readonly PublicationPreview[] = [
   {
@@ -387,7 +387,7 @@ export const publicationDemos: readonly PublicationPreview[] = [
 ];
 
 export function publishedPreview(record: PublicRecord): PublicationPreview {
-  return { id: record.slug, title: record.title, abstract: record.summary, demo: false, authors: record.authors, venue: record.venue, year: record.year, doi: record.doi, publisherUrl: record.publisherUrl, domain: record.domain, methods: record.methods, findings: record.results };
+  return { id: record.slug, title: record.title, abstract: record.abstract??record.summary, citation:record.citation, illustrative:record.illustrative, illustrativeNotice:record.illustrativeNotice, demo: false, authors: record.authors, venue: record.venue, year: record.year, doi: record.doi, publisherUrl: record.publisherUrl, domain: record.domain, methods: record.methods, findings: record.results };
 }
 
 export function selectPublicationDemos(query: ListQuery) {

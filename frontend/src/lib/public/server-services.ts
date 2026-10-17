@@ -1,0 +1,9 @@
+import 'server-only';
+import {serviceGroups,serviceCopy,type ServiceGroup,type GroupDefinition,type ServiceDefinition} from '@/content/services';
+import {editorialPages} from './server-editorial';
+export async function publishedServiceGroup(group:ServiceGroup):Promise<GroupDefinition>{
+ const pages=await editorialPages(group),base=serviceGroups[group],overview=pages.find(page=>page.slug===group);
+ const steps=(page:import('./editorial').EditorialPage|undefined)=>serviceCopy.processSteps.map((step,index)=>{const entry=page?.sections.find(section=>section.key===`process-${index+1}`);return {title:entry?.title??step.title,text:entry?.description??step.text,visible:entry?.visible!==false};}).filter(step=>step.visible);
+ const items=base.items.map((service):ServiceDefinition=>{const page=pages.find(page=>page.slug===`${group}-${service.slug}`);if(!page)return service;return {...service,processSteps:steps(page),pathways:page.pathways,title:page.title,summary:page.summary,audience:page.audience??service.audience,blocks:[...(page.blocks??service.blocks),...(page.capabilities?.length?[{title:'Capabilities',items:page.capabilities}]:[])],deliverables:page.deliverables??service.deliverables,responsibilities:page.responsibilities??service.responsibilities,faqs:page.faqs,inquiryHref:page.inquiryHref,mentorSlugs:page.mentorSlugs,media:page.media?.find(image=>image.type==='image'&&image.url),related:page.featured.filter((ref):ref is {kind:'projects'|'research';slug:string}=>ref.kind==='projects'||ref.kind==='research')};});
+ return {...base,processSteps:steps(overview),heading:overview?.title,programs:pages.filter(page=>page.slug.startsWith('institutional-program-')),title:overview?.title??base.title,summary:overview?.summary??base.summary,items,faqs:overview?.faqs,inquiryHref:overview?.inquiryHref};
+}

@@ -1,0 +1,7 @@
+import type {Request,Response} from 'express';
+import type {ChatAttachment} from './chat-media.schema';
+export function sendPrivateMedia(file:ChatAttachment,req:Request,res:Response){
+  const stored=file.data as unknown as Buffer|{buffer:Buffer},data=(Buffer.isBuffer(stored)?stored:Buffer.from(stored.buffer)).subarray(0,file.size);res.set({'Content-Type':file.mimeType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Disposition':`${file.mimeType==='application/pdf'?'attachment':'inline'}; filename="${file.name}"`,'Content-Security-Policy':"sandbox; default-src 'none'",'Cross-Origin-Resource-Policy':'same-origin','Accept-Ranges':'bytes','Vary':'Cookie'});
+  const range=req.get('Range');if(range){const match=/^bytes=(\d*)-(\d*)$/.exec(range);if(!match||!match[1]&&!match[2])return res.status(416).set('Content-Range',`bytes */${data.length}`).end();const start=match[1]?Number(match[1]):Math.max(0,data.length-Number(match[2])),end=match[1]?(match[2]?Math.min(Number(match[2]),data.length-1):data.length-1):data.length-1;if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||start>=data.length||end<start)return res.status(416).set('Content-Range',`bytes */${data.length}`).end();return res.status(206).set({'Content-Range':`bytes ${start}-${end}/${data.length}`,'Content-Length':String(end-start+1)}).send(data.subarray(start,end+1));}
+  return res.set('Content-Length',String(data.length)).send(data);
+}

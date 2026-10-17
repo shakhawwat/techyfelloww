@@ -1,3 +1,4 @@
+import {editorialPage} from '@/lib/public/server-editorial';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Section } from '@/components/ui/section';
@@ -10,8 +11,8 @@ import { PublicationFilterForm } from './publication-filter-form';
 import { PublicationList } from './publication-list';
 import { publishedPreview, selectPublicationDemos } from './publication-preview-data';
 import styles from './publication-listing.module.css';
-function Header() {
-  return <Section tone="dark" className={`content-hero ${styles.hero}`}><nav className="content-breadcrumbs" aria-label="Breadcrumb"><ol><li><Link href="/">Home</Link></li><li><span aria-current="page">Publications</span></li></ol></nav><span className="eyebrow">{publicPages.publications.eyebrow}</span><h1>{publicPages.publications.title}</h1><p className="content-lead">{publicPages.publications.description}</p></Section>;
+async function Header() {const page=await editorialPage('publications');
+  return <Section tone="dark" className={`content-hero ${styles.hero}`}><nav className="content-breadcrumbs" aria-label="Breadcrumb"><ol><li><Link href="/">Home</Link></li><li><span aria-current="page">Publications</span></li></ol></nav><span className="eyebrow">{page?.sections.find(section=>section.key==='hero')?.label??publicPages.publications.eyebrow}</span><h1>{page?.title??publicPages.publications.title}</h1><p className="content-lead">{page?.summary??publicPages.publications.description}</p></Section>;
 }
 export async function PublicationsPage({ search }: { search: Search }) {
   let query;

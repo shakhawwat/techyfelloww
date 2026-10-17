@@ -6,7 +6,7 @@ const require=createRequire(import.meta.url);
 test('isolated commerce reservations, verified settlement and course-specific access',{timeout:180000},async()=>{
  assert.equal(process.env.NODE_ENV,'test');
  const name=`techyfellow_test_commerce_${randomBytes(6).toString('hex')}`;
- process.env.MONGODB_URI=`mongodb://mongodb:27017/${name}?replicaSet=rs0`;process.env.AUTH_ALLOWED_ORIGINS='http://localhost:8081';process.env.EMAIL_ENABLED='false';
+ process.env.MONGODB_URI=`${process.env.TECHYFELLOW_TEST_MONGO??'mongodb://mongodb:27017'}/${name}?replicaSet=rs0`;process.env.AUTH_ALLOWED_ORIGINS='http://localhost:8081';process.env.EMAIL_ENABLED='false';
  const {NestFactory}=require('@nestjs/core'),{getConnectionToken}=require('@nestjs/mongoose'),{AppModule}=require('../dist/app.module.js'),{AuthExceptionFilter}=require('../dist/auth/auth-exception.filter.js'),{hashPassword}=require('../dist/auth/password.js');
  const app=await NestFactory.create(AppModule,{logger:false});app.setGlobalPrefix('api/v1');app.useGlobalFilters(new AuthExceptionFilter());const db=app.get(getConnectionToken());await db.asPromise();assert.equal(db.name,name);assert.equal((await db.db.listCollections().toArray()).length,0);
  try{

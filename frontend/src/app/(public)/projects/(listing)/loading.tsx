@@ -1,1 +1,1 @@
-export { ContentLoading as default } from '@/components/public/content-pages';
+export { ProjectDirectoryLoading as default } from '@/components/public/project-directory';

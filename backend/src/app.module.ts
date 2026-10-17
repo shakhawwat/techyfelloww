@@ -1,3 +1,7 @@
+import {StoreModule} from './store/store.module';
+import {CommunityModule} from './community/community.module';
+import {MessagingModule} from './messaging/messaging.module';
+import {DashboardModule} from "./dashboard/dashboard.module";
 import { AcademyModule } from "./academy/academy.module";
 import { AccountModule } from "./account/account.module";
 import { LeadModule } from "./leads/lead.module";
@@ -29,6 +33,10 @@ import { databaseOptions, validateEnvironment } from "./config/environment";
         },
       }),
     }),
+    StoreModule,
+    CommunityModule,
+    MessagingModule,
+    DashboardModule,
     ContentModule,
     AcademyModule,
     AuthModule,
